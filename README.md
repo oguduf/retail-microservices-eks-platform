@@ -25,8 +25,6 @@ AWS Data and Messaging Services
 
 ## Repositories
 
-Replace `<YOUR-GITHUB-USERNAME>` with your GitHub username.
-
 | Repository | Responsibility |
 |---|---|
 | [Infrastructure](https://github.com/oguduf/retail-infra-terraform) | Terraform for AWS networking, EKS, data, messaging, IAM, and observability |
