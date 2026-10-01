@@ -22,6 +22,12 @@ This document will contain screenshots and verification evidence for the Retail 
 - EventBridge event bus and rules
 - SQS queues and dead-letter queues
 
+## EKS Worker-Node Launch Template
+
+- Terraform replaced the managed node group with a launch-template-based node group.
+- The launch template applies a `Name` tag to worker EC2 instances.
+- Verification: replacement node group became Active and EC2 instances displayed the expected `Name` tag.
+
 ## Kubernetes Evidence
 
 - EKS worker nodes registered and ready

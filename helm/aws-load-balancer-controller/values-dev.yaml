@@ -1,0 +1,11 @@
+clusterName: guduf-retail-eks-dev
+region: us-east-2
+vpcId: vpc-0b52e76ec8e18e7b2
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::866934333672:role/guduf-retail-eks-dev-load-balancer-controller-role
