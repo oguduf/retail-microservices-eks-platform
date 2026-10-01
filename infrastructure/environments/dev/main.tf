@@ -74,3 +74,16 @@ module "monitoring_core" {
   project_name = var.project_name
   environment  = var.environment
 }
+
+module "monitoring_compute" {
+  source = "../../modules/monitoring-compute"
+
+  project_name                = var.project_name
+  environment                 = var.environment
+  events_queue_arn            = module.monitoring_core.events_queue_arn
+  events_table_name           = module.monitoring_core.events_table_name
+  events_table_arn            = module.monitoring_core.events_table_arn
+  event_archive_bucket_name   = module.monitoring_core.event_archive_bucket_name
+  event_archive_bucket_arn    = module.monitoring_core.event_archive_bucket_arn
+  critical_events_topic_arn   = module.monitoring_core.critical_events_topic_arn
+}

@@ -122,3 +122,18 @@ output "monitoring_critical_events_topic_arn" {
   description = "SNS topic ARN for critical event notifications."
   value       = module.monitoring_core.critical_events_topic_arn
 }
+
+output "monitoring_event_processor_function_name" {
+  description = "Lambda function that processes monitoring events from SQS."
+  value       = module.monitoring_compute.event_processor_function_name
+}
+
+output "monitoring_event_query_api_function_name" {
+  description = "Lambda function serving monitoring event queries."
+  value       = module.monitoring_compute.event_query_api_function_name
+}
+
+output "monitoring_events_api_endpoint" {
+  description = "Base HTTPS endpoint for the monitoring event query API."
+  value       = module.monitoring_compute.events_api_endpoint
+}
