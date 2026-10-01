@@ -97,3 +97,28 @@ output "load_balancer_controller_role_arn" {
   description = "IAM role ARN used by the AWS Load Balancer Controller."
   value       = module.eks.load_balancer_controller_role_arn
 }
+
+output "monitoring_events_queue_url" {
+  description = "SQS queue URL used by the Kubernetes event producer."
+  value       = module.monitoring_core.events_queue_url
+}
+
+output "monitoring_events_dlq_url" {
+  description = "SQS dead-letter queue URL for failed monitoring events."
+  value       = module.monitoring_core.events_dlq_url
+}
+
+output "monitoring_events_table_name" {
+  description = "DynamoDB table used by the monitoring event processor."
+  value       = module.monitoring_core.events_table_name
+}
+
+output "monitoring_event_archive_bucket_name" {
+  description = "Private S3 bucket storing raw monitoring event payloads."
+  value       = module.monitoring_core.event_archive_bucket_name
+}
+
+output "monitoring_critical_events_topic_arn" {
+  description = "SNS topic ARN for critical event notifications."
+  value       = module.monitoring_core.critical_events_topic_arn
+}

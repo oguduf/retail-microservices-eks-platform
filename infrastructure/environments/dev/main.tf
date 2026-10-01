@@ -67,3 +67,10 @@ module "cache" {
   private_subnet_ids            = module.network.private_subnet_ids
   eks_cluster_security_group_id = module.eks.cluster_security_group_id
 }
+
+module "monitoring_core" {
+  source = "../../modules/monitoring-core"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
