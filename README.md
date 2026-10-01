@@ -1,6 +1,6 @@
-# Kubernetes Event Driven Monitoring on AWS
+# Roast & Relay Coffee Store and Event-Driven Monitoring on AWS
 
-An event-driven monitoring project using a Kubernetes event producer, AWS Lambda, Amazon SQS, SNS, S3, DynamoDB, and API Gateway. Terraform manages AWS infrastructure; GitHub Actions deploys it using OIDC.
+This repository manages the shared AWS development platform for the Roast & Relay Coffee Store and its separate Kubernetes event-driven monitoring demo. Terraform manages AWS infrastructure; GitHub Actions uses OIDC for infrastructure and application delivery.
 
 ## Architecture
 
@@ -20,7 +20,9 @@ Kubernetes event-producer Pod (EKS)
 Client --> API Gateway --> Query Lambda --> DynamoDB
 ```
 
-## Application components
+The Coffee Store runs separately in the same EKS cluster. An internet-facing Application Load Balancer routes browser requests to the frontend Service; Nginx routes API requests to the product, inventory, order, and notification Services. The five images are built from the `retail-application` repository and pushed to ECR. The current lab app uses encrypted EBS-backed SQLite volumes for inventory, orders, and notifications; it does not yet use the existing RDS, DynamoDB business tables, or retail EventBridge/SQS resources.
+
+## Monitoring components
 
 | Component | Responsibility |
 |---|---|
@@ -49,15 +51,17 @@ docs/                 Architecture, runbook, and demo evidence
 
 1. GitHub Actions authenticates to AWS using OIDC.
 2. Terraform plans infrastructure changes against the existing S3 remote state.
-3. CI tests and builds the event producer, then publishes its immutable image to ECR.
-4. The platform workflow deploys the image to EKS.
-5. Lambda functions process SQS messages and serve queries through API Gateway.
+3. The infrastructure workflow can add the EBS CSI add-on and IRSA role, monitoring alarms, and optional confirmed SNS email subscription.
+4. A manually triggered workflow in `retail-application` builds all five Coffee Store images, publishes immutable run tags to ECR, applies AWS-specific Kubernetes manifests, and checks Deployment rollouts.
+5. The platform workflow separately builds and deploys the monitoring event producer; Lambda functions process SQS messages and serve queries through API Gateway.
 
 ## Project status
 
 - Existing VPC, EKS, ECR, data, cache, and messaging resources are tracked in Terraform.
 - Terraform code has been consolidated into this repository and validated against the existing state.
-- Event producer, processor Lambda, query API Lambda, and monitoring-specific AWS resources remain to be implemented.
+- Monitoring-specific SQS/DLQ, SNS, S3, DynamoDB, Lambda, API Gateway, and event-producer code are implemented in Terraform and the repository.
+- The AWS Coffee Store deployment manifests and manual five-image build/deploy workflow live in `retail-application`.
+- The latest local Terraform changes add encrypted EBS-backed volumes for the app and alarms for processor/API Lambda errors and monitoring DLQ messages; they still require a reviewed Terraform plan and apply.
 
 ## Cost notes
 

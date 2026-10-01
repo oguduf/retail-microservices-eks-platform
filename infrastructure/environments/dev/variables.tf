@@ -84,3 +84,9 @@ variable "node_max_size" {
   type        = number
   default     = 4
 }
+
+variable "monitoring_alert_email" {
+  description = "Optional email endpoint for monitoring SNS alerts. The recipient must confirm the subscription."
+  type        = string
+  default     = ""
+}

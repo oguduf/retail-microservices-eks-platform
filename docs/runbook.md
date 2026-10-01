@@ -24,6 +24,16 @@
 3. Confirm the SNS email subscription has been confirmed.
 4. Check the topic subscription and email spam/quarantine.
 
+## Coffee Store is not reachable
+
+1. Check the five Deployments and Pods in the `coffee-store` namespace with `kubectl get pods,deployments -n coffee-store`.
+2. Inspect failing workloads with `kubectl describe pod` and `kubectl logs`; check readiness and liveness probe results.
+3. Confirm the AWS Load Balancer Controller is running in `kube-system`, then inspect the Ingress and its events with `kubectl describe ingress coffee-store -n coffee-store`.
+4. If a stateful Pod is pending, inspect its PVC and PV. `WaitForFirstConsumer` provisions the encrypted EBS volume in the selected Pod's Availability Zone; the EBS CSI add-on and its IRSA role must be healthy.
+5. The GitHub workflow is manual. Verify the five ECR tags and that its OIDC role is allowed both to push images and to access the EKS cluster.
+
+The SQLite/EBS arrangement is for development only. EBS volumes are zonal and are retained when claims are deleted; back up or snapshot data before changing storage resources. It is not a substitute for a multi-AZ managed database in production.
+
 ## Terraform changes
 
 1. Run the Terraform workflow with operation `plan` from `dev`.

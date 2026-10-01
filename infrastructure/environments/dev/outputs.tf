@@ -98,6 +98,11 @@ output "load_balancer_controller_role_arn" {
   value       = module.eks.load_balancer_controller_role_arn
 }
 
+output "ebs_csi_driver_role_arn" {
+  description = "IAM role used by the EBS CSI driver add-on through IRSA."
+  value       = module.eks.ebs_csi_driver_role_arn
+}
+
 output "monitoring_events_queue_url" {
   description = "SQS queue URL used by the Kubernetes event producer."
   value       = module.monitoring_core.events_queue_url

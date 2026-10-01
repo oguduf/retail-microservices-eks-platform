@@ -47,3 +47,8 @@ output "load_balancer_controller_role_arn" {
   description = "IAM role ARN for the AWS Load Balancer Controller service account."
   value       = aws_iam_role.load_balancer_controller.arn
 }
+
+output "ebs_csi_driver_role_arn" {
+  description = "IAM role used by the EBS CSI driver add-on through IRSA."
+  value       = aws_iam_role.ebs_csi_driver.arn
+}

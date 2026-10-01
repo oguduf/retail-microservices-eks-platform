@@ -1,0 +1,68 @@
+name: Deploy Event Producer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: event-producer-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: GudufMonitoringEventProducer
+
+      - name: Resolve deployment values from Terraform state
+        working-directory: infrastructure/environments/dev
+        run: |
+          terraform init -input=false -reconfigure -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=environments/dev/terraform.tfstate" -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true"
+          echo "ECR_REPOSITORY_URI=$(terraform output -json ecr_repository_urls | jq -r '.\"monitoring-event-producer\"')" >> "$GITHUB_ENV"
+          echo "EVENTS_QUEUE_URL=$(terraform output -raw monitoring_events_queue_url)" >> "$GITHUB_ENV"
+          echo "EVENT_PRODUCER_ROLE_ARN=$(terraform output -raw monitoring_event_producer_role_arn)" >> "$GITHUB_ENV"
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --tag "$ECR_REPOSITORY_URI:$IMAGE_TAG" kubernetes/event-producer
+          docker push "$ECR_REPOSITORY_URI:$IMAGE_TAG"
+          echo "IMAGE_URI=$ECR_REPOSITORY_URI:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Connect to Amazon EKS
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Deploy event producer
+        run: |
+          kubectl apply -f kubernetes/namespaces/monitoring-dev.yaml
+          sed "s|EVENT_PRODUCER_ROLE_ARN_PLACEHOLDER|$EVENT_PRODUCER_ROLE_ARN|g" kubernetes/event-producer/service-account.yaml.tpl | kubectl apply -f -
+          sed -e "s|IMAGE_URI_PLACEHOLDER|$IMAGE_URI|g" -e "s|EVENTS_QUEUE_URL_PLACEHOLDER|$EVENTS_QUEUE_URL|g" kubernetes/event-producer/deployment.yaml.tpl | kubectl apply -f -
+
+      - name: Verify event producer rollout
+        run: kubectl rollout status deployment/event-producer --namespace monitoring-dev --timeout=5m

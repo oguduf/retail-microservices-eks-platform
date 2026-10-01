@@ -38,6 +38,7 @@ module "ecr" {
     "inventory",
     "order",
     "notification",
+    "frontend",
     "monitoring-event-producer"
   ])
 }
@@ -74,6 +75,7 @@ module "monitoring_core" {
 
   project_name = var.project_name
   environment  = var.environment
+  alert_email  = var.monitoring_alert_email
 }
 
 module "monitoring_compute" {

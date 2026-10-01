@@ -12,7 +12,15 @@ Amazon SQS queue --> Event processor Lambda
                      DynamoDB    S3      SNS for critical events
 
 Client --> API Gateway HTTP API --> Query API Lambda --> DynamoDB
+
+Browser --> public ALB --> Coffee Store frontend (EKS)
+                              |--> Product Catalog service
+                              |--> Inventory service (encrypted EBS-backed SQLite)
+                              |--> Order service (encrypted EBS-backed SQLite)
+                              `--> Notification service (encrypted EBS-backed SQLite)
 ```
+
+The Coffee Store is deployed separately from the monitoring event producer. Its current app implementation keeps SQLite for inventory, orders, and notification records; EKS uses the EBS CSI add-on and encrypted gp3 persistent volumes for the development deployment. The notification service currently receives a best-effort HTTP call from the order service. The monitoring SQS/SNS pipeline is a separate system and is not yet the Coffee Store notification transport.
 
 ## Components and responsibilities
 
@@ -34,6 +42,7 @@ The existing RDS MySQL instance, Valkey cache, retail EventBridge bus, and retai
 - Processor Lambda uses a dedicated role scoped to its queue, archive bucket prefix, DynamoDB table, and SNS topic.
 - Query Lambda has read-only access to the event table.
 - The archive bucket blocks public access, enables encryption, and uses lifecycle retention appropriate for the lab.
+- CloudWatch alarms publish processor errors and a non-empty monitoring DLQ to the critical SNS topic. Email delivery is optional and requires a confirmed SNS email subscription.
 - API Gateway exposes only the query operations needed for the demo. Authentication can be added if public access is not acceptable.
 
 ## Lab tradeoffs

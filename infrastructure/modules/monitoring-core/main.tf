@@ -118,3 +118,79 @@ resource "aws_sns_topic" "critical_events" {
     Repository = "retail-microservices-eks-platform"
   }
 }
+
+resource "aws_sns_topic_subscription" "critical_events_email" {
+  count     = var.alert_email == "" ? 0 : 1
+  topic_arn = aws_sns_topic.critical_events.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "event_processor_errors" {
+  alarm_name          = "${var.project_name}-${var.environment}-event-processor-errors"
+  alarm_description   = "The monitoring event processor Lambda reported one or more errors."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = "${var.project_name}-${var.environment}-event-processor"
+  }
+
+  alarm_actions = [aws_sns_topic.critical_events.arn]
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "event_query_api_errors" {
+  alarm_name          = "${var.project_name}-${var.environment}-event-query-api-errors"
+  alarm_description   = "The monitoring event query API Lambda reported one or more errors."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = "${var.project_name}-${var.environment}-event-query-api"
+  }
+
+  alarm_actions = [aws_sns_topic.critical_events.arn]
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "events_dlq_messages" {
+  alarm_name          = "${var.project_name}-${var.environment}-monitoring-dlq-not-empty"
+  alarm_description   = "One or more monitoring events reached the dead-letter queue and need investigation."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    QueueName = aws_sqs_queue.events_dlq.name
+  }
+
+  alarm_actions = [aws_sns_topic.critical_events.arn]
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
+}
