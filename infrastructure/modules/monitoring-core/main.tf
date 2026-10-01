@@ -4,6 +4,10 @@ resource "aws_sqs_queue" "events_dlq" {
   name                      = "${var.project_name}-${var.environment}-monitoring-events-dlq"
   message_retention_seconds = 1209600
   sqs_managed_sse_enabled   = true
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
 }
 
 resource "aws_sqs_queue" "events" {
@@ -15,6 +19,10 @@ resource "aws_sqs_queue" "events" {
     deadLetterTargetArn = aws_sqs_queue.events_dlq.arn
     maxReceiveCount     = 5
   })
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
 }
 
 resource "aws_dynamodb_table" "events" {
@@ -34,10 +42,18 @@ resource "aws_dynamodb_table" "events" {
   server_side_encryption {
     enabled = true
   }
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
 }
 
 resource "aws_s3_bucket" "event_archive" {
   bucket = "${var.project_name}-${var.environment}-monitoring-events-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "event_archive" {
@@ -97,4 +113,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "event_archive" {
 resource "aws_sns_topic" "critical_events" {
   name              = "${var.project_name}-${var.environment}-monitoring-critical-events"
   kms_master_key_id = "alias/aws/sns"
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
 }
