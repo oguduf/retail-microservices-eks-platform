@@ -1,54 +1,36 @@
 # Operations Runbook
 
-This runbook describes how to diagnose, recover, and verify common operational failures in the Retail Microservices Platform on AWS EKS.
+## Event does not appear in the API
 
-## Deployment Failure
+1. Check the event-producer Pod status and logs in the `monitoring-dev` namespace.
+2. Check SQS approximate queue depth and whether messages are being received.
+3. Check the processor Lambda logs and invocation errors in CloudWatch.
+4. Inspect the dead-letter queue for failed messages and the Lambda error details before redriving.
+5. Confirm the producer service account is associated with the expected IRSA role and that its role can send to the correct queue.
+6. Confirm the processor role can write to the expected DynamoDB table and S3 prefix.
+7. Query the event through API Gateway after fixing the cause.
 
-If a deployment fails:
+## API request fails
 
-1. Check the GitHub Actions workflow logs.
-2. Check whether the Kubernetes pods are running.
-3. Check the application logs.
-4. Fix the issue and deploy again.
-5. Roll back to the last working version if necessary.
+1. Check the API Gateway stage and route integration.
+2. Check query Lambda invocation metrics and CloudWatch logs.
+3. Confirm the query Lambda role has read access to the event table.
+4. Verify the requested event ID exists in DynamoDB.
 
-## Application Failure
+## Critical notification is not received
 
-If an application service stops working:
+1. Confirm event severity is exactly `critical` according to the event schema.
+2. Check processor Lambda logs and SNS publish errors.
+3. Confirm the SNS email subscription has been confirmed.
+4. Check the topic subscription and email spam/quarantine.
 
-1. Check whether its container or Kubernetes pod is running.
-2. Check its logs for errors.
-3. Check its database, messaging, and configuration dependencies.
-4. Fix the root cause.
-5. Verify that the application works again.
+## Terraform changes
 
-## Database Failure
+1. Run the Terraform workflow with operation `plan` from `dev`.
+2. Review every proposed create, update, and destroy action, especially shared VPC and EKS resources.
+3. Apply only after the plan matches the intended change.
+4. Verify the AWS resource and Terraform workflow result.
 
-If a service cannot connect to its database:
+## Cost and cleanup
 
-1. Check the application logs.
-2. Confirm the database is available.
-3. Confirm networking and security rules allow the connection.
-4. Confirm credentials and connection settings are correct.
-5. Test the application again.
-
-## Event Processing Failure
-
-If orders, inventory, or notifications do not update:
-
-1. Check the EventBridge rules.
-2. Check the SQS queues.
-3. Check the service processing the message.
-4. Check the dead-letter queue for failed messages.
-5. Fix the issue before retrying failed messages.
-
-## Monitoring
-
-Monitor:
-
-- Application logs
-- Kubernetes pod health
-- CPU and memory usage
-- Database health
-- SQS queue depth
-- Failed messages in dead-letter queues
+The NAT Gateway, EKS cluster/nodes, RDS, and Valkey can continue to incur charges. When the project is paused or complete, review Terraform state and the plan, then destroy resources in dependency order while preserving the Terraform state bucket until all managed infrastructure is removed.
