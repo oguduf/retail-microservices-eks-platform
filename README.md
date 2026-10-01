@@ -1,60 +1,64 @@
-# Retail Microservices Platform on AWS EKS
+# Kubernetes Event Driven Monitoring on AWS
 
-A four-service retail platform deployed to Amazon EKS using Terraform, Docker, Helm, and GitHub Actions.
+An event-driven monitoring project using a Kubernetes event producer, AWS Lambda, Amazon SQS, SNS, S3, DynamoDB, and API Gateway. Terraform manages AWS infrastructure; GitHub Actions deploys it using OIDC.
 
 ## Architecture
 
 ```text
-Internet
-   |
-Application Load Balancer / Kubernetes Ingress
-   |
-Amazon EKS
-   ├── Product Service
-   ├── Inventory Service
-   ├── Order Service
-   └── Notification Service
-   |
-AWS Data and Messaging Services
-   ├── Amazon RDS for MySQL
-   ├── Amazon DynamoDB
-   ├── Amazon ElastiCache
-   ├── Amazon EventBridge
-   └── Amazon SQS with dead-letter queues
+Kubernetes event-producer Pod (EKS)
+             |
+             | IRSA-authenticated SendMessage
+             v
+        Amazon SQS queue -----> Dead-letter queue
+             |
+             v
+      Event processor Lambda
+        |       |       |
+        v       v       v
+   DynamoDB    S3      SNS (critical events)
+
+Client --> API Gateway --> Query Lambda --> DynamoDB
 ```
 
-## Repositories
+## Application components
 
-| Repository | Responsibility |
+| Component | Responsibility |
 |---|---|
-| [Infrastructure](https://github.com/oguduf/retail-infra-terraform) | Terraform for AWS networking, EKS, data, messaging, IAM, and observability |
-| [Application](https://github.com/oguduf/retail-application) | Four microservices, tests, Dockerfiles, Docker Compose, and event contracts |
-| [EKS Platform](https://github.com/oguduf/retail-eks-platform) | Helm charts, Kubernetes configuration, ingress, autoscaling, and deployments |
+| Kubernetes event producer | Sends sample health and service events to SQS using its dedicated IRSA role. |
+| Event processor Lambda | Processes queued events, archives raw payloads in S3, stores searchable records in DynamoDB, and publishes critical alerts to SNS. |
+| Query API Lambda | Reads event records from DynamoDB for API requests. |
+| API Gateway HTTP API | Exposes read-only event query endpoints. |
 
-## Services
+SQS, SNS, S3, DynamoDB, API Gateway, and CloudWatch are managed AWS services supporting the application components.
 
-| Service | Responsibility | Primary Data Store |
-|---|---|---|
-| Product | Product catalog, categories, and pricing | MySQL |
-| Inventory | Stock and reservation handling | DynamoDB |
-| Order | Order creation and status updates | MySQL |
-| Notification | Customer notifications | DynamoDB |
+## Existing AWS foundation
 
-## Event Flow
+The project reuses the existing `us-east-2` VPC, EKS cluster, worker nodes, EKS OIDC provider, GitHub Actions OIDC role, ECR, and Terraform state bucket. Existing retail resources remain tracked in Terraform until a reviewed plan removes resources no longer needed by this project.
 
-1. Order Service publishes `OrderCreated`.
-2. Inventory Service reserves or rejects stock.
-3. Inventory Service publishes `InventoryReserved` or `InventoryFailed`.
-4. Order Service updates the order status.
-5. Notification Service consumes events and records notifications.
+## Repository layout
 
-## Delivery Flow
+```text
+infrastructure/       Terraform bootstrap, modules, and dev environment
+kubernetes/           Namespace and event-producer Kubernetes manifests
+lambda/               Event processor and query API Lambda code
+docs/                 Architecture, runbook, and demo evidence
+.github/workflows/    Terraform and application deployment workflows
+```
 
-1. Terraform provisions AWS infrastructure and ECR repositories.
-2. Application CI tests, scans, builds, and pushes immutable images to ECR.
-3. The EKS platform pipeline deploys images using Helm.
-4. GitHub Actions validates, deploys, smoke-tests, and supports rollback.
+## Delivery flow
 
-## Project Status
+1. GitHub Actions authenticates to AWS using OIDC.
+2. Terraform plans infrastructure changes against the existing S3 remote state.
+3. CI tests and builds the event producer, then publishes its immutable image to ECR.
+4. The platform workflow deploys the image to EKS.
+5. Lambda functions process SQS messages and serve queries through API Gateway.
 
-Planning and repository structure complete. Infrastructure implementation is next.
+## Project status
+
+- Existing VPC, EKS, ECR, data, cache, and messaging resources are tracked in Terraform.
+- Terraform code has been consolidated into this repository and validated against the existing state.
+- Event producer, processor Lambda, query API Lambda, and monitoring-specific AWS resources remain to be implemented.
+
+## Cost notes
+
+The existing NAT Gateway, EKS cluster and nodes, RDS instance, and Valkey cache can incur ongoing charges. The RDS and cache are not required by the target design. Remove unneeded resources through Terraform only after reviewing a plan that preserves the shared network and EKS resources.

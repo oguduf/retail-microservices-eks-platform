@@ -1,57 +1,36 @@
 # Demo Evidence
 
-This document will contain screenshots and verification evidence for the Retail Microservices Platform on AWS EKS.
+Capture evidence as each project phase is completed.
 
-## Repository and CI/CD Evidence
+## Repository and CI/CD
 
-- GitHub Project board showing planned and completed work
-- GitHub Actions workflow runs for infrastructure, application, and EKS platform repositories
-- Pull requests from `dev` into `main`
-- Successful Terraform validation and plan
-- Successful container image build and security scan
+- Terraform migration PR and successful no-change plan against the existing remote state
+- Successful GitHub Actions OIDC authentication
+- Successful Terraform plan/apply for monitoring resources
+- Successful producer test, image build, and ECR push
 
-## AWS Infrastructure Evidence
+## Shared AWS foundation
 
-- Terraform apply output
-- VPC with public and private subnets across multiple Availability Zones
-- Amazon EKS cluster and managed node group
-- Amazon ECR repositories for all four services
-- RDS MySQL instance
-- DynamoDB tables
-- ElastiCache cluster
-- EventBridge event bus and rules
-- SQS queues and dead-letter queues
+- Existing VPC and EKS cluster reused
+- EKS worker nodes Ready
+- Dedicated IRSA role for the event-producer service account
 
-## EKS Worker-Node Launch Template
+## Event pipeline
 
-- Terraform replaced the managed node group with a launch-template-based node group.
-- The launch template applies a `Name` tag to worker EC2 instances.
-- Verification: replacement node group became Active and EC2 instances displayed the expected `Name` tag.
+- Producer Pod sends a sample event to SQS
+- Processor Lambda invocation and CloudWatch logs
+- Event record appears in DynamoDB
+- Raw event object appears in the private S3 archive bucket
+- Critical event generates an SNS email notification
+- Failed event is retained in the SQS dead-letter queue
 
-## Kubernetes Evidence
+## Query API
 
-- EKS worker nodes registered and ready
-- Kubernetes namespace for the application
-- Helm release status
-- Product, Inventory, Order, and Notification deployments
-- Running pods and container logs
-- Kubernetes services and ingress
-- Readiness and liveness probes
-- Horizontal Pod Autoscaler configuration
+- API Gateway routes for `GET /events` and `GET /events/{eventId}`
+- Successful response for an existing event and expected response for a missing event
 
-## Application Evidence
+## Operations and cost
 
-- Product catalog request succeeds
-- Inventory reservation succeeds or fails correctly
-- New order is created
-- Order status changes after inventory processing
-- Notification is created from an event
-- End-to-end order workflow succeeds
-
-## Observability and Failure Testing
-
-- CloudWatch logs for each service
-- CloudWatch alarms and dashboard
-- Failed message appears in a dead-letter queue
-- Recovery or replay of a failed message
-- Failed deployment and Helm rollback evidence
+- CloudWatch alarms for Lambda errors and DLQ message count
+- Evidence of a failed message and recovery procedure
+- Final Terraform plan or cleanup evidence for lab resources
