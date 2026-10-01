@@ -20,7 +20,26 @@ Kubernetes event-producer Pod (EKS)
 Client --> API Gateway --> Query Lambda --> DynamoDB
 ```
 
-The Coffee Store runs separately in the same EKS cluster. An internet-facing Application Load Balancer routes browser requests to the frontend Service; Nginx routes API requests to the product, inventory, order, and notification Services. The five images are built from the `retail-application` repository and pushed to ECR. The current lab app uses encrypted EBS-backed SQLite volumes for inventory, orders, and notifications; it does not yet use the existing RDS, DynamoDB business tables, or retail EventBridge/SQS resources.
+The Coffee Store runs separately in the same EKS cluster. An internet-facing Application Load Balancer routes browser requests to the frontend Service; Nginx routes API requests to the product, inventory, order, and notification Services. The five images are built from the `retail-application` repository and pushed to ECR. The current lab app uses encrypted EBS-backed SQLite volumes for inventory, orders, and notifications; it does not yet use the existing RDS or DynamoDB business tables.
+
+Order notifications use the existing retail EventBridge bus and SQS notification queue:
+
+```text
+Order service (IRSA: events:PutEvents)
+          │ OrderCreated
+          ▼
+  EventBridge event bus
+          │ rule fan-out
+          ▼
+  SQS notification queue ──failed processing──> SQS notification DLQ
+          │
+          ▼
+Notification service (IRSA: Receive/Delete SQS, Publish SNS)
+       ├── stores the update for the app UI
+       └── publishes to the order-notifications SNS topic
+```
+
+The order service uses a SQLite transactional outbox so an EventBridge outage does not silently discard the notification event after an order is committed. SQS delivery is at-least-once; consumers must tolerate duplicates. The DLQ has a CloudWatch alarm routed to the existing monitoring SNS topic.
 
 ## Monitoring components
 
@@ -53,7 +72,7 @@ docs/                 Architecture, runbook, and demo evidence
 2. Terraform plans infrastructure changes against the existing S3 remote state.
 3. The infrastructure workflow can add the EBS CSI add-on and IRSA role, monitoring alarms, and optional confirmed SNS email subscription.
 4. A manually triggered workflow in `retail-application` builds all five Coffee Store images, publishes immutable run tags to ECR, applies AWS-specific Kubernetes manifests, and checks Deployment rollouts.
-5. The platform workflow separately builds and deploys the monitoring event producer; Lambda functions process SQS messages and serve queries through API Gateway.
+5. The platform workflow separately builds and deploys the monitoring event producer; Lambda functions process monitoring SQS messages and serve queries through API Gateway.
 
 ## Project status
 
@@ -61,6 +80,7 @@ docs/                 Architecture, runbook, and demo evidence
 - Terraform code has been consolidated into this repository and validated against the existing state.
 - Monitoring-specific SQS/DLQ, SNS, S3, DynamoDB, Lambda, API Gateway, and event-producer code are implemented in Terraform and the repository.
 - The AWS Coffee Store deployment manifests and manual five-image build/deploy workflow live in `retail-application`.
+- The AWS Coffee Store order path publishes `OrderCreated` events to EventBridge, fans them out through SQS, and publishes customer updates through SNS using per-service IRSA roles.
 - The latest local Terraform changes add encrypted EBS-backed volumes for the app and alarms for processor/API Lambda errors and monitoring DLQ messages; they still require a reviewed Terraform plan and apply.
 
 ## Cost notes

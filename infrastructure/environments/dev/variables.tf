@@ -90,3 +90,9 @@ variable "monitoring_alert_email" {
   type        = string
   default     = ""
 }
+
+variable "order_notification_email" {
+  description = "Optional email endpoint for order SNS notifications. The recipient must confirm the subscription."
+  type        = string
+  default     = ""
+}

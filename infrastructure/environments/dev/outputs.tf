@@ -88,6 +88,26 @@ output "notification_queue_url" {
   value       = module.messaging.notification_queue_url
 }
 
+output "notification_dlq_url" {
+  description = "SQS dead-letter queue URL for failed order notifications."
+  value       = module.messaging.notification_dlq_url
+}
+
+output "order_notifications_topic_arn" {
+  description = "SNS topic ARN used for customer order notifications."
+  value       = module.messaging.order_notifications_topic_arn
+}
+
+output "order_event_publisher_role_arn" {
+  description = "IRSA role ARN used by the order service to publish order events."
+  value       = module.messaging.order_event_publisher_role_arn
+}
+
+output "notification_consumer_role_arn" {
+  description = "IRSA role ARN used by the notification service to consume and publish notifications."
+  value       = module.messaging.notification_consumer_role_arn
+}
+
 output "cache_primary_endpoint" {
   description = "Private Valkey cache endpoint."
   value       = module.cache.primary_endpoint_address

@@ -56,8 +56,12 @@ module "data" {
 module "messaging" {
   source = "../../modules/messaging"
 
-  project_name = var.project_name
-  environment  = var.environment
+  project_name               = var.project_name
+  environment                = var.environment
+  eks_oidc_provider_arn      = module.eks.oidc_provider_arn
+  eks_oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
+  order_notification_email   = var.order_notification_email
+  operations_alert_topic_arn = module.monitoring_core.critical_events_topic_arn
 }
 
 module "cache" {
