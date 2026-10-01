@@ -37,7 +37,8 @@ module "ecr" {
     "product",
     "inventory",
     "order",
-    "notification"
+    "notification",
+    "monitoring-event-producer"
   ])
 }
 
@@ -86,4 +87,6 @@ module "monitoring_compute" {
   event_archive_bucket_name = module.monitoring_core.event_archive_bucket_name
   event_archive_bucket_arn  = module.monitoring_core.event_archive_bucket_arn
   critical_events_topic_arn = module.monitoring_core.critical_events_topic_arn
+  eks_oidc_provider_arn     = module.eks.oidc_provider_arn
+  eks_oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
 }

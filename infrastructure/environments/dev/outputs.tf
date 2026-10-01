@@ -137,3 +137,8 @@ output "monitoring_events_api_endpoint" {
   description = "Base HTTPS endpoint for the monitoring event query API."
   value       = module.monitoring_compute.events_api_endpoint
 }
+
+output "monitoring_event_producer_role_arn" {
+  description = "IRSA role ARN used by the Kubernetes event producer."
+  value       = module.monitoring_compute.event_producer_role_arn
+}

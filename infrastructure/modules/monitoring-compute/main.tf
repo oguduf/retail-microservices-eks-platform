@@ -23,6 +23,61 @@ data "aws_iam_policy_document" "lambda_assume_role" {
   }
 }
 
+locals {
+  eks_oidc_issuer = replace(var.eks_oidc_issuer_url, "https://", "")
+}
+
+data "aws_iam_policy_document" "event_producer_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.eks_oidc_provider_arn]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer}:sub"
+      values   = ["system:serviceaccount:monitoring-dev:event-producer"]
+    }
+  }
+}
+
+resource "aws_iam_role" "event_producer" {
+  name               = "${var.project_name}-${var.environment}-event-producer-role"
+  assume_role_policy = data.aws_iam_policy_document.event_producer_assume_role.json
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
+}
+
+resource "aws_iam_role_policy" "event_producer" {
+  name = "${var.project_name}-${var.environment}-event-producer-policy"
+  role = aws_iam_role.event_producer.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "SendMonitoringEvents"
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = var.events_queue_arn
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "event_processor" {
   name              = "/aws/lambda/${var.project_name}-${var.environment}-event-processor"
   retention_in_days = 14

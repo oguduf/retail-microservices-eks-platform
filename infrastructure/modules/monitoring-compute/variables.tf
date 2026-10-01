@@ -37,3 +37,13 @@ variable "critical_events_topic_arn" {
   description = "ARN of the SNS topic for critical monitoring events."
   type        = string
 }
+
+variable "eks_oidc_provider_arn" {
+  description = "ARN of the EKS OIDC provider used for IRSA."
+  type        = string
+}
+
+variable "eks_oidc_issuer_url" {
+  description = "EKS OIDC issuer URL used for IRSA trust conditions."
+  type        = string
+}

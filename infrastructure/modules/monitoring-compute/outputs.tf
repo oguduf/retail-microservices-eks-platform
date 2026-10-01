@@ -12,3 +12,8 @@ output "events_api_endpoint" {
   description = "Base HTTPS endpoint for the monitoring query API."
   value       = aws_apigatewayv2_api.events.api_endpoint
 }
+
+output "event_producer_role_arn" {
+  description = "IRSA role ARN used by the Kubernetes event producer."
+  value       = aws_iam_role.event_producer.arn
+}
