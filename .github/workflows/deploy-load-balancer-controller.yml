@@ -45,6 +45,4 @@ jobs:
             --values helm/aws-load-balancer-controller/values-dev.yaml
 
       - name: Verify controller rollout
-        run: kubectl rollout status deployment/aws-load-balancer-controller \
-          --namespace kube-system \
-          --timeout=5m
+        run: kubectl rollout status deployment/aws-load-balancer-controller --namespace kube-system --timeout=5m
