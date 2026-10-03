@@ -1,6 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 resource "aws_sqs_queue" "events_dlq" {
+  #checkov:skip=CKV_AWS_27:SSE-SQS is enabled below; Checkov 2.0.930 does not recognize SQS-managed encryption.
   name                      = "${var.project_name}-${var.environment}-monitoring-events-dlq"
   message_retention_seconds = 1209600
   sqs_managed_sse_enabled   = true
@@ -11,6 +12,7 @@ resource "aws_sqs_queue" "events_dlq" {
 }
 
 resource "aws_sqs_queue" "events" {
+  #checkov:skip=CKV_AWS_27:SSE-SQS is enabled below; Checkov 2.0.930 does not recognize SQS-managed encryption.
   name                       = "${var.project_name}-${var.environment}-monitoring-events"
   visibility_timeout_seconds = 180
   sqs_managed_sse_enabled    = true
@@ -40,7 +42,8 @@ resource "aws_dynamodb_table" "events" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.event_archive.arn
   }
 
   tags = {
@@ -62,7 +65,7 @@ resource "aws_s3_bucket" "event_archive" {
 }
 
 resource "aws_kms_key" "event_archive" {
-  description             = "Encrypt ${var.project_name}-${var.environment} monitoring event archive objects"
+  description             = "Encrypt ${var.project_name}-${var.environment} monitoring event data"
   enable_key_rotation     = true
   deletion_window_in_days = 30
 
