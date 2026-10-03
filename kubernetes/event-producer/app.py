@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import boto3
 
@@ -16,6 +17,7 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "kubernetes-event-producer")
 EVENT_SEVERITY = os.getenv("EVENT_SEVERITY", "info")
 EVENT_MESSAGE = os.getenv("EVENT_MESSAGE", "Kubernetes event producer heartbeat")
 INTERVAL_SECONDS = int(os.getenv("INTERVAL_SECONDS", "60"))
+HEALTH_FILE = os.getenv("HEALTH_FILE", "/tmp/event-producer-health")
 
 sqs = boto3.client("sqs")
 
@@ -42,6 +44,8 @@ def main():
             send_event()
         except Exception:
             logger.exception("Unable to send monitoring event")
+        finally:
+            Path(HEALTH_FILE).touch()
 
         time.sleep(INTERVAL_SECONDS)
 

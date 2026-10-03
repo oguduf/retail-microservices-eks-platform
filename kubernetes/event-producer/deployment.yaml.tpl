@@ -17,6 +17,11 @@ spec:
         app.kubernetes.io/name: event-producer
         app.kubernetes.io/part-of: guduf-retail-eks
     spec:
+      securityContext:
+        fsGroup: 10001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: event-producer
       containers:
         - name: event-producer
@@ -39,7 +44,33 @@ spec:
               cpu: 250m
               memory: 256Mi
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys,time; p='/tmp/event-producer-health'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys,time; p='/tmp/event-producer-health'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
