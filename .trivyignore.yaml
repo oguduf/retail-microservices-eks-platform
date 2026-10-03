@@ -1,0 +1,29 @@
+# Reviewed exceptions for the development/lab environment. Keep these scoped to
+# exact files; do not use them as a production security baseline.
+misconfigurations:
+  - id: AWS-0132
+    paths:
+      - infrastructure/bootstrap/main.tf
+    statement: Terraform state uses SSE-S3 plus versioning, blocked public access, and restricted IAM; moving the existing backend to a customer-managed KMS key needs a separately planned key-policy and recovery migration.
+    expired_at: 2027-03-31
+  - id: AWS-0039
+    paths:
+      - infrastructure/modules/eks/main.tf
+    statement: EKS 1.36 encrypts Kubernetes API data, including Secrets, by default with an AWS-owned KMS key; Trivy requires an explicit encryption_config block.
+    expired_at: 2027-03-31
+  - id: AWS-0040
+    paths:
+      - infrastructure/modules/eks/main.tf
+    statement: Public EKS API access is retained for GitHub-hosted deployment runners in this lab; production should use a private endpoint and a runner with VPC connectivity.
+    expired_at: 2027-03-31
+  - id: AWS-0041
+    paths:
+      - infrastructure/modules/eks/main.tf
+    statement: GitHub-hosted runner IPs are not fixed for this lab; EKS authentication still gates the public API, but production should restrict access through a private endpoint.
+    expired_at: 2027-03-31
+  - id: AWS-0136
+    paths:
+      - infrastructure/modules/messaging/main.tf
+      - infrastructure/modules/monitoring-core/main.tf
+    statement: These development SNS topics use the AWS-managed SNS KMS key; customer-managed keys would require key policies for the EventBridge and Lambda publishers and should be implemented before production.
+    expired_at: 2027-03-31

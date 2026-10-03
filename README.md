@@ -80,6 +80,8 @@ docs/                 Architecture, runbook, and demo evidence
 
 The `Security checks` workflow runs on pushes to `dev`, pull requests targeting `main`, and manual dispatch. Gitleaks scans Git history for secrets; Checkov checks Terraform, Kubernetes, Docker, and workflow configuration; Trivy scans dependencies and configuration for fixable high and critical findings. Configure the security scan job as a required status check on `main` to block merges when scans fail. The manual Terraform and deployment workflows do not call the security workflow and are not automatically gated by its result; verify a passing scan for the revision being deployed. GitHub Actions uses OIDC for AWS access.
 
+Trivy's file-scoped, expiring lab exceptions are documented in `.trivyignore.yaml`. They cover the public EKS API used by GitHub-hosted runners and AWS-managed encryption keys on the state bucket and SNS topics. A passing scan with these exceptions is not a production security sign-off; use private EKS API access and review customer-managed KMS keys and their publisher/key policies before production.
+
 ## Project status
 
 - VPC, EKS, ECR, messaging, and monitoring resources remain in the dev Terraform configuration. RDS MySQL, Valkey, and retail inventory/notification DynamoDB are pending removal.
