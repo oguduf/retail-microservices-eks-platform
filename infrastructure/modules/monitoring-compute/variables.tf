@@ -33,6 +33,11 @@ variable "event_archive_bucket_arn" {
   type        = string
 }
 
+variable "event_archive_kms_key_arn" {
+  description = "Customer-managed KMS key ARN used to encrypt the S3 event archive."
+  type        = string
+}
+
 variable "critical_events_topic_arn" {
   description = "ARN of the SNS topic for critical monitoring events."
   type        = string

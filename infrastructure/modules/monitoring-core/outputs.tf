@@ -33,6 +33,11 @@ output "event_archive_bucket_arn" {
   value       = aws_s3_bucket.event_archive.arn
 }
 
+output "event_archive_kms_key_arn" {
+  description = "Customer-managed KMS key ARN used to encrypt the S3 event archive."
+  value       = aws_kms_key.event_archive.arn
+}
+
 output "critical_events_topic_arn" {
   description = "SNS topic ARN for critical monitoring event alerts."
   value       = aws_sns_topic.critical_events.arn

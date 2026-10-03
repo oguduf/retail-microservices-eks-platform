@@ -52,7 +52,19 @@ resource "aws_s3_bucket" "event_archive" {
   #checkov:skip=CKV_AWS_18:Access logging is enabled by aws_s3_bucket_logging.event_archive below; Checkov 2.0.930 does not correlate the separate logging resource.
   #checkov:skip=CKV_AWS_21:Versioning is enabled by aws_s3_bucket_versioning.event_archive below; Checkov 2.0.930 does not correlate the separate versioning resource.
   #checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not configured for this single-region development archive.
+  #checkov:skip=CKV_AWS_19:KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.event_archive below; Checkov 2.0.930 does not correlate the separate encryption resource.
+  #checkov:skip=CKV_AWS_145:Customer-managed KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.event_archive below; Checkov 2.0.930 does not correlate the separate encryption resource.
   bucket = "${var.project_name}-${var.environment}-monitoring-events-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
+}
+
+resource "aws_kms_key" "event_archive" {
+  description             = "Encrypt ${var.project_name}-${var.environment} monitoring event archive objects"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
 
   tags = {
     Repository = "retail-microservices-eks-platform"
@@ -186,8 +198,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "event_archive" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.event_archive.arn
     }
+
+    bucket_key_enabled = true
   }
 }
 

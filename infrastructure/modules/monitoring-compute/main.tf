@@ -10,6 +10,8 @@ data "archive_file" "event_query_api" {
   output_path = "${path.module}/event-query-api.zip"
 }
 
+data "aws_region" "current" {}
+
 data "aws_iam_policy_document" "lambda_assume_role" {
   statement {
     effect = "Allow"
@@ -143,6 +145,17 @@ resource "aws_iam_role_policy" "event_processor" {
         Effect   = "Allow"
         Action   = "s3:PutObject"
         Resource = "${var.event_archive_bucket_arn}/*"
+      },
+      {
+        Sid      = "EncryptArchivedEvents"
+        Effect   = "Allow"
+        Action   = "kms:GenerateDataKey"
+        Resource = var.event_archive_kms_key_arn
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "s3.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
       },
       {
         Sid      = "PublishCriticalEvents"
