@@ -50,6 +50,8 @@ resource "aws_dynamodb_table" "events" {
 
 resource "aws_s3_bucket" "event_archive" {
   #checkov:skip=CKV_AWS_18:Access logging is enabled by aws_s3_bucket_logging.event_archive below; Checkov 2.0.930 does not correlate the separate logging resource.
+  #checkov:skip=CKV_AWS_21:Versioning is enabled by aws_s3_bucket_versioning.event_archive below; Checkov 2.0.930 does not correlate the separate versioning resource.
+  #checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not configured for this single-region development archive.
   bucket = "${var.project_name}-${var.environment}-monitoring-events-${data.aws_caller_identity.current.account_id}"
 
   tags = {
