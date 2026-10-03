@@ -43,16 +43,6 @@ module "ecr" {
   ])
 }
 
-module "data" {
-  source = "../../modules/data"
-
-  project_name                  = var.project_name
-  environment                   = var.environment
-  vpc_id                        = module.network.vpc_id
-  private_subnet_ids            = module.network.private_subnet_ids
-  eks_cluster_security_group_id = module.eks.cluster_security_group_id
-}
-
 module "messaging" {
   source = "../../modules/messaging"
 
@@ -62,16 +52,6 @@ module "messaging" {
   eks_oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
   order_notification_email   = var.order_notification_email
   operations_alert_topic_arn = module.monitoring_core.critical_events_topic_arn
-}
-
-module "cache" {
-  source = "../../modules/cache"
-
-  project_name                  = var.project_name
-  environment                   = var.environment
-  vpc_id                        = module.network.vpc_id
-  private_subnet_ids            = module.network.private_subnet_ids
-  eks_cluster_security_group_id = module.eks.cluster_security_group_id
 }
 
 module "monitoring_core" {

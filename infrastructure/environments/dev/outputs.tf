@@ -53,34 +53,9 @@ output "eks_cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
-output "mysql_endpoint" {
-  description = "Private MySQL endpoint for Product and Order services."
-  value       = module.data.mysql_endpoint
-}
-
-output "mysql_master_secret_arn" {
-  description = "Secrets Manager ARN holding RDS master credentials."
-  value       = module.data.mysql_master_secret_arn
-}
-
-output "inventory_table_name" {
-  description = "DynamoDB inventory table name."
-  value       = module.data.inventory_table_name
-}
-
-output "notification_table_name" {
-  description = "DynamoDB notification table name."
-  value       = module.data.notification_table_name
-}
-
 output "event_bus_name" {
   description = "Custom EventBridge event bus name."
   value       = module.messaging.event_bus_name
-}
-
-output "inventory_queue_url" {
-  description = "SQS URL consumed by the Inventory service."
-  value       = module.messaging.inventory_queue_url
 }
 
 output "notification_queue_url" {
@@ -106,11 +81,6 @@ output "order_event_publisher_role_arn" {
 output "notification_consumer_role_arn" {
   description = "IRSA role ARN used by the notification service to consume and publish notifications."
   value       = module.messaging.notification_consumer_role_arn
-}
-
-output "cache_primary_endpoint" {
-  description = "Private Valkey cache endpoint."
-  value       = module.cache.primary_endpoint_address
 }
 
 output "load_balancer_controller_role_arn" {
