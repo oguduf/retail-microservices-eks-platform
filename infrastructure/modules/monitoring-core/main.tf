@@ -49,6 +49,7 @@ resource "aws_dynamodb_table" "events" {
 }
 
 resource "aws_s3_bucket" "event_archive" {
+  #checkov:skip=CKV_AWS_18:Access logging is enabled by aws_s3_bucket_logging.event_archive below; Checkov 2.0.930 does not correlate the separate logging resource.
   bucket = "${var.project_name}-${var.environment}-monitoring-events-${data.aws_caller_identity.current.account_id}"
 
   tags = {
@@ -59,6 +60,7 @@ resource "aws_s3_bucket" "event_archive" {
 resource "aws_s3_bucket" "event_archive_access_logs" {
   #checkov:skip=CKV_AWS_18:This is the destination bucket for S3 access logs; logging it would create recursive log delivery.
   #checkov:skip=CKV_AWS_21:Versioning is enabled by aws_s3_bucket_versioning.event_archive_access_logs below; this Checkov rule only reads the deprecated inline bucket setting.
+  #checkov:skip=CKV_AWS_19:SSE-S3 encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.event_archive_access_logs below; Checkov 2.0.930 does not correlate the separate encryption resource.
   #checkov:skip=CKV_AWS_145:S3 server access log delivery requires SSE-S3; SSE-KMS destinations are unsupported.
   #checkov:skip=CKV_AWS_144:Cross-region replication is not configured for this single-region development log sink.
   bucket = "${var.project_name}-${var.environment}-monitoring-access-logs-${data.aws_caller_identity.current.account_id}"
