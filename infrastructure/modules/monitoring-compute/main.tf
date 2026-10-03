@@ -250,6 +250,7 @@ resource "aws_iam_role_policy" "event_query_api" {
 
 resource "aws_lambda_function" "event_query_api" {
   #checkov:skip=CKV_AWS_116:API Gateway invokes this function synchronously; Lambda DLQs apply only to asynchronous invocations.
+  #checkov:skip=CKV_AWS_70:This function accesses DynamoDB through its IAM-authorized regional service endpoint and has no VPC-only dependencies; VPC attachment would add ENI and routing complexity without reducing data-plane exposure.
   function_name = "${var.project_name}-${var.environment}-event-query-api"
   role          = aws_iam_role.event_query_api.arn
   handler       = "handler.handler"
