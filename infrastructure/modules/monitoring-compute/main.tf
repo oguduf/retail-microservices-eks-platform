@@ -98,6 +98,15 @@ resource "aws_cloudwatch_log_group" "event_query_api" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "api_access" {
+  name              = "/aws/apigateway/${var.project_name}-${var.environment}-monitoring-api"
+  retention_in_days = 14
+
+  tags = {
+    Repository = "retail-microservices-eks-platform"
+  }
+}
+
 resource "aws_iam_role" "event_processor" {
   name               = "${var.project_name}-${var.environment}-event-processor-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
@@ -295,6 +304,20 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.events.id
   name        = "$default"
   auto_deploy = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      sourceIp       = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
+  }
 
   tags = {
     Repository = "retail-microservices-eks-platform"
