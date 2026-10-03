@@ -11,12 +11,14 @@ resource "aws_cloudwatch_event_bus" "retail" {
 }
 
 resource "aws_sqs_queue" "notification_dlq" {
+  #checkov:skip=CKV_AWS_27:SSE-SQS is enabled below; Checkov 2.0.930 does not recognize SQS-managed encryption.
   name                      = "${var.project_name}-${var.environment}-notification-dlq"
   message_retention_seconds = 1209600
   sqs_managed_sse_enabled   = true
 }
 
 resource "aws_sqs_queue" "notification" {
+  #checkov:skip=CKV_AWS_27:SSE-SQS is enabled below; Checkov 2.0.930 does not recognize SQS-managed encryption.
   name                       = "${var.project_name}-${var.environment}-notification"
   visibility_timeout_seconds = 60
   sqs_managed_sse_enabled    = true

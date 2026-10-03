@@ -48,10 +48,20 @@ resource "aws_iam_role_policy_attachment" "node_cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
+resource "aws_cloudwatch_log_group" "cluster" {
+  #checkov:skip=CKV_AWS_158:CloudWatch Logs already encrypts this development log group at rest with an AWS-owned key.
+  name              = "/aws/eks/${var.cluster_name}/cluster"
+  retention_in_days = 14
+}
+
 resource "aws_eks_cluster" "main" {
-  name     = var.cluster_name
-  role_arn = aws_iam_role.cluster.arn
-  version  = var.kubernetes_version
+  #checkov:skip=CKV_AWS_58:The development cluster runs EKS 1.36, which envelope-encrypts Kubernetes API data, including Secrets, by default with an AWS-owned KMS key.
+  #checkov:skip=CKV_AWS_39:The development cluster keeps its public API endpoint for GitHub-hosted deployment runners; production should use private access.
+  #checkov:skip=CKV_AWS_38:GitHub-hosted runner IPs are not fixed for this lab; EKS authentication still gates API access. Use a private runner and endpoint in production.
+  name                      = var.cluster_name
+  role_arn                  = aws_iam_role.cluster.arn
+  version                   = var.kubernetes_version
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   access_config {
     authentication_mode                         = "API_AND_CONFIG_MAP"
@@ -65,7 +75,8 @@ resource "aws_eks_cluster" "main" {
   }
 
   depends_on = [
-    aws_iam_role_policy_attachment.cluster_policy
+    aws_iam_role_policy_attachment.cluster_policy,
+    aws_cloudwatch_log_group.cluster
   ]
 }
 

@@ -1,4 +1,5 @@
 resource "aws_ecr_repository" "service" {
+  #checkov:skip=CKV_AWS_136:Existing development repositories use ECR AES-256 encryption; switching to KMS would require replacing the repositories.
   for_each = var.service_names
 
   name                 = "${var.project_name}-${var.environment}-${each.key}"

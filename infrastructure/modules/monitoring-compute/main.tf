@@ -81,6 +81,7 @@ resource "aws_iam_role_policy" "event_producer" {
 }
 
 resource "aws_cloudwatch_log_group" "event_processor" {
+  #checkov:skip=CKV_AWS_158:CloudWatch Logs encrypts this development log group at rest with an AWS-owned key.
   name              = "/aws/lambda/${var.project_name}-${var.environment}-event-processor"
   retention_in_days = 14
 
@@ -90,6 +91,7 @@ resource "aws_cloudwatch_log_group" "event_processor" {
 }
 
 resource "aws_cloudwatch_log_group" "event_query_api" {
+  #checkov:skip=CKV_AWS_158:CloudWatch Logs encrypts this development log group at rest with an AWS-owned key.
   name              = "/aws/lambda/${var.project_name}-${var.environment}-event-query-api"
   retention_in_days = 14
 
@@ -99,6 +101,7 @@ resource "aws_cloudwatch_log_group" "event_query_api" {
 }
 
 resource "aws_cloudwatch_log_group" "api_access" {
+  #checkov:skip=CKV_AWS_158:CloudWatch Logs encrypts this development log group at rest with an AWS-owned key.
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-monitoring-api"
   retention_in_days = 14
 
@@ -131,6 +134,15 @@ resource "aws_iam_role_policy" "event_processor" {
           "logs:PutLogEvents"
         ]
         Resource = "${aws_cloudwatch_log_group.event_processor.arn}:*"
+      },
+      {
+        Sid    = "PublishProcessorTraces"
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
       },
       {
         Sid    = "ReceiveMonitoringEvents"
@@ -177,12 +189,20 @@ resource "aws_iam_role_policy" "event_processor" {
 }
 
 resource "aws_lambda_function" "event_processor" {
-  function_name = "${var.project_name}-${var.environment}-event-processor"
-  role          = aws_iam_role.event_processor.arn
-  handler       = "handler.handler"
-  runtime       = "python3.12"
-  timeout       = 30
-  memory_size   = 256
+  #checkov:skip=CKV_AWS_173:Environment values are resource names and ARNs, not secrets; Lambda encrypts them with its AWS-managed KMS key.
+  #checkov:skip=CKV_AWS_117:This SQS consumer uses regional AWS service endpoints and has no VPC-only dependency.
+  #checkov:skip=CKV_AWS_116:This function is invoked through an SQS event source mapping; the source queue's redrive policy sends failed messages to its DLQ.
+  function_name                  = "${var.project_name}-${var.environment}-event-processor"
+  role                           = aws_iam_role.event_processor.arn
+  handler                        = "handler.handler"
+  runtime                        = "python3.12"
+  timeout                        = 30
+  memory_size                    = 256
+  reserved_concurrent_executions = 5
+
+  tracing_config {
+    mode = "Active"
+  }
 
   filename         = data.archive_file.event_processor.output_path
   source_code_hash = data.archive_file.event_processor.output_base64sha256
@@ -236,6 +256,15 @@ resource "aws_iam_role_policy" "event_query_api" {
         Resource = "${aws_cloudwatch_log_group.event_query_api.arn}:*"
       },
       {
+        Sid    = "PublishQueryApiTraces"
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "ReadMonitoringEvents"
         Effect = "Allow"
         Action = [
@@ -250,13 +279,19 @@ resource "aws_iam_role_policy" "event_query_api" {
 
 resource "aws_lambda_function" "event_query_api" {
   #checkov:skip=CKV_AWS_116:API Gateway invokes this function synchronously; Lambda DLQs apply only to asynchronous invocations.
-  #checkov:skip=CKV_AWS_70:This function accesses DynamoDB through its IAM-authorized regional service endpoint and has no VPC-only dependencies; VPC attachment would add ENI and routing complexity without reducing data-plane exposure.
-  function_name = "${var.project_name}-${var.environment}-event-query-api"
-  role          = aws_iam_role.event_query_api.arn
-  handler       = "handler.handler"
-  runtime       = "python3.12"
-  timeout       = 10
-  memory_size   = 128
+  #checkov:skip=CKV_AWS_117:This function uses IAM-authorized DynamoDB regional endpoints and has no VPC-only dependency; VPC attachment would add ENI and routing complexity.
+  #checkov:skip=CKV_AWS_173:The only environment value is a table name, not a secret; Lambda encrypts it with its AWS-managed KMS key.
+  function_name                  = "${var.project_name}-${var.environment}-event-query-api"
+  role                           = aws_iam_role.event_query_api.arn
+  handler                        = "handler.handler"
+  runtime                        = "python3.12"
+  timeout                        = 10
+  memory_size                    = 128
+  reserved_concurrent_executions = 5
+
+  tracing_config {
+    mode = "Active"
+  }
 
   filename         = data.archive_file.event_query_api.output_path
   source_code_hash = data.archive_file.event_query_api.output_base64sha256

@@ -78,7 +78,7 @@ docs/                 Architecture, runbook, and demo evidence
 
 ## Security checks
 
-The `Security checks` workflow runs for pull requests targeting `main` and pushes to `main`; it can also be run manually. Gitleaks scans Git history for secrets; Checkov checks Terraform, Kubernetes, Docker, and workflow configuration; Trivy scans dependencies and configuration for fixable high and critical findings. A push to `dev` without a pull request does not trigger these scans. A merged PR is scanned again on the resulting `main` commit; this is a separate event, not a duplicate scan within a deployment workflow. Configure the security scan job as a required status check on `main` to block merges when scans fail. The manual Terraform and deployment workflows do not call the security workflow and are not automatically gated by its result; verify a passing scan for the revision being deployed. GitHub Actions uses OIDC for AWS access.
+The `Security checks` workflow runs on pushes to `dev`, pull requests targeting `main`, and manual dispatch. Gitleaks scans Git history for secrets; Checkov checks Terraform, Kubernetes, Docker, and workflow configuration; Trivy scans dependencies and configuration for fixable high and critical findings. Configure the security scan job as a required status check on `main` to block merges when scans fail. The manual Terraform and deployment workflows do not call the security workflow and are not automatically gated by its result; verify a passing scan for the revision being deployed. GitHub Actions uses OIDC for AWS access.
 
 ## Project status
 
