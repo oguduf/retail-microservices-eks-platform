@@ -22,6 +22,16 @@ resource "aws_vpc" "main" {
   }
 }
 
+resource "aws_default_security_group" "default" {
+  vpc_id  = aws_vpc.main.id
+  ingress = []
+  egress  = []
+
+  tags = {
+    Name = "${local.name_prefix}-default-sg"
+  }
+}
+
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -80,6 +90,7 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_eip" "nat" {
+  #checkov:skip=CKV2_AWS_19:This EIP is associated with the NAT Gateway for private-subnet outbound access.
   domain = "vpc"
 
   tags = {
