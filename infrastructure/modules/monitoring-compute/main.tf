@@ -249,6 +249,7 @@ resource "aws_iam_role_policy" "event_query_api" {
 }
 
 resource "aws_lambda_function" "event_query_api" {
+  #checkov:skip=CKV_AWS_116:API Gateway invokes this function synchronously; Lambda DLQs apply only to asynchronous invocations.
   function_name = "${var.project_name}-${var.environment}-event-query-api"
   role          = aws_iam_role.event_query_api.arn
   handler       = "handler.handler"
