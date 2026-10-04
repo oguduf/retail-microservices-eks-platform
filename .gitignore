@@ -12,3 +12,6 @@ crash.*.log
 # Terraform CLI configuration
 .terraformrc
 terraform.rc
+
+# Generated Lambda deployment packages
+*.zip

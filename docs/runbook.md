@@ -24,6 +24,24 @@
 3. Confirm the SNS email subscription has been confirmed.
 4. Check the topic subscription and email spam/quarantine.
 
+## Coffee Store is not reachable
+
+1. Check the five Deployments and Pods in the `coffee-store` namespace with `kubectl get pods,deployments -n coffee-store`.
+2. Inspect failing workloads with `kubectl describe pod` and `kubectl logs`; check readiness and liveness probe results.
+3. Confirm the AWS Load Balancer Controller is running in `kube-system`, then inspect the Ingress and its events with `kubectl describe ingress coffee-store -n coffee-store`.
+4. If a stateful Pod is pending, inspect its PVC and PV. `WaitForFirstConsumer` provisions the encrypted EBS volume in the selected Pod's Availability Zone; the EBS CSI add-on and its IRSA role must be healthy.
+5. The GitHub workflow is manual. Verify the five ECR tags and that its OIDC role is allowed both to push images and to access the EKS cluster.
+
+The SQLite/EBS arrangement is for development only. EBS volumes are zonal and are retained when claims are deleted; back up or snapshot data before changing storage resources. It is not a substitute for a multi-AZ managed database in production.
+
+## Order appears but its update or email is missing
+
+1. Confirm the order exists and inspect the Order service logs for outbox publishing errors.
+2. Check the `OrderCreated` EventBridge rule and target failure metrics. A failed target delivery can go to the notification DLQ.
+3. Check notification SQS messages available, in flight, and in its DLQ. Inspect the Notification service Pod logs and its IRSA role's SQS permissions.
+4. Check for other consumers of the notification queue, including manually created EventBridge Pipes. Competing consumers can take messages before the Notification service sees them.
+5. If the update is visible in the UI but email is missing, inspect SNS publish errors and confirm the email subscription. Do not replay messages until you check for an existing notification to avoid duplicates.
+
 ## Terraform changes
 
 1. Run the Terraform workflow with operation `plan` from `dev`.
@@ -33,4 +51,4 @@
 
 ## Cost and cleanup
 
-The NAT Gateway, EKS cluster/nodes, RDS, and Valkey can continue to incur charges. When the project is paused or complete, review Terraform state and the plan, then destroy resources in dependency order while preserving the Terraform state bucket until all managed infrastructure is removed.
+The NAT Gateway, EKS cluster/nodes, RDS, and Valkey can continue to incur charges. The local dev Terraform configuration now plans to remove unused RDS, Valkey, and retail DynamoDB resources, but no AWS deletion has been applied. Check for data and take backups before destruction: RDS currently skips its final snapshot, and Valkey automatic snapshot retention is disabled. Review the exact plan and keep the monitoring DynamoDB table, VPC, EKS, and active messaging resources. Preserve the Terraform state bucket until all managed infrastructure is removed.

@@ -53,34 +53,9 @@ output "eks_cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
-output "mysql_endpoint" {
-  description = "Private MySQL endpoint for Product and Order services."
-  value       = module.data.mysql_endpoint
-}
-
-output "mysql_master_secret_arn" {
-  description = "Secrets Manager ARN holding RDS master credentials."
-  value       = module.data.mysql_master_secret_arn
-}
-
-output "inventory_table_name" {
-  description = "DynamoDB inventory table name."
-  value       = module.data.inventory_table_name
-}
-
-output "notification_table_name" {
-  description = "DynamoDB notification table name."
-  value       = module.data.notification_table_name
-}
-
 output "event_bus_name" {
   description = "Custom EventBridge event bus name."
   value       = module.messaging.event_bus_name
-}
-
-output "inventory_queue_url" {
-  description = "SQS URL consumed by the Inventory service."
-  value       = module.messaging.inventory_queue_url
 }
 
 output "notification_queue_url" {
@@ -88,12 +63,77 @@ output "notification_queue_url" {
   value       = module.messaging.notification_queue_url
 }
 
-output "cache_primary_endpoint" {
-  description = "Private Valkey cache endpoint."
-  value       = module.cache.primary_endpoint_address
+output "notification_dlq_url" {
+  description = "SQS dead-letter queue URL for failed order notifications."
+  value       = module.messaging.notification_dlq_url
+}
+
+output "order_notifications_topic_arn" {
+  description = "SNS topic ARN used for customer order notifications."
+  value       = module.messaging.order_notifications_topic_arn
+}
+
+output "order_event_publisher_role_arn" {
+  description = "IRSA role ARN used by the order service to publish order events."
+  value       = module.messaging.order_event_publisher_role_arn
+}
+
+output "notification_consumer_role_arn" {
+  description = "IRSA role ARN used by the notification service to consume and publish notifications."
+  value       = module.messaging.notification_consumer_role_arn
 }
 
 output "load_balancer_controller_role_arn" {
   description = "IAM role ARN used by the AWS Load Balancer Controller."
   value       = module.eks.load_balancer_controller_role_arn
+}
+
+output "ebs_csi_driver_role_arn" {
+  description = "IAM role used by the EBS CSI driver add-on through IRSA."
+  value       = module.eks.ebs_csi_driver_role_arn
+}
+
+output "monitoring_events_queue_url" {
+  description = "SQS queue URL used by the Kubernetes event producer."
+  value       = module.monitoring_core.events_queue_url
+}
+
+output "monitoring_events_dlq_url" {
+  description = "SQS dead-letter queue URL for failed monitoring events."
+  value       = module.monitoring_core.events_dlq_url
+}
+
+output "monitoring_events_table_name" {
+  description = "DynamoDB table used by the monitoring event processor."
+  value       = module.monitoring_core.events_table_name
+}
+
+output "monitoring_event_archive_bucket_name" {
+  description = "Private S3 bucket storing raw monitoring event payloads."
+  value       = module.monitoring_core.event_archive_bucket_name
+}
+
+output "monitoring_critical_events_topic_arn" {
+  description = "SNS topic ARN for critical event notifications."
+  value       = module.monitoring_core.critical_events_topic_arn
+}
+
+output "monitoring_event_processor_function_name" {
+  description = "Lambda function that processes monitoring events from SQS."
+  value       = module.monitoring_compute.event_processor_function_name
+}
+
+output "monitoring_event_query_api_function_name" {
+  description = "Lambda function serving monitoring event queries."
+  value       = module.monitoring_compute.event_query_api_function_name
+}
+
+output "monitoring_events_api_endpoint" {
+  description = "Base HTTPS endpoint for the monitoring event query API."
+  value       = module.monitoring_compute.events_api_endpoint
+}
+
+output "monitoring_event_producer_role_arn" {
+  description = "IRSA role ARN used by the Kubernetes event producer."
+  value       = module.monitoring_compute.event_producer_role_arn
 }

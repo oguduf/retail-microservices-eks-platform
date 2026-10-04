@@ -33,10 +33,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
@@ -56,6 +56,8 @@ jobs:
           terraform validate
 
       - name: Create Terraform plan
+        env:
+          TF_VAR_monitoring_alert_email: ${{ vars.MONITORING_ALERT_EMAIL }}
         run: terraform plan -input=false -out=tfplan -var="aws_region=${{ vars.AWS_REGION }}" -var="project_name=${{ vars.PROJECT_NAME }}" -var="environment=${{ vars.ENVIRONMENT }}"
 
       - name: Apply Terraform plan
