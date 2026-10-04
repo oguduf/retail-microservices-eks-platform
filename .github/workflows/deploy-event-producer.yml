@@ -39,10 +39,32 @@ jobs:
       - name: Resolve deployment values from Terraform state
         working-directory: infrastructure/environments/dev
         run: |
+          set -euo pipefail
           terraform init -input=false -reconfigure -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=environments/dev/terraform.tfstate" -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true"
-          echo "ECR_REPOSITORY_URI=$(terraform output -json ecr_repository_urls | jq -r '.\"monitoring-event-producer\"')" >> "$GITHUB_ENV"
-          echo "EVENTS_QUEUE_URL=$(terraform output -raw monitoring_events_queue_url)" >> "$GITHUB_ENV"
-          echo "EVENT_PRODUCER_ROLE_ARN=$(terraform output -raw monitoring_event_producer_role_arn)" >> "$GITHUB_ENV"
+
+          if ! repository_urls="$(terraform output -json ecr_repository_urls)"; then
+            echo "::error::Could not read ecr_repository_urls from Terraform state. Apply the current Terraform configuration first."
+            exit 1
+          fi
+
+          if ! ECR_REPOSITORY_URI="$(jq -er '."monitoring-event-producer" | select(type == "string" and length > 0)' <<< "$repository_urls")"; then
+            echo "::error::Terraform output ecr_repository_urls does not contain a valid monitoring-event-producer repository URI. Apply the current Terraform configuration first."
+            exit 1
+          fi
+
+          EVENTS_QUEUE_URL="$(terraform output -raw monitoring_events_queue_url)"
+          EVENT_PRODUCER_ROLE_ARN="$(terraform output -raw monitoring_event_producer_role_arn)"
+
+          if [[ -z "$EVENTS_QUEUE_URL" || -z "$EVENT_PRODUCER_ROLE_ARN" ]]; then
+            echo "::error::The Terraform state is missing the monitoring queue URL or event producer role ARN. Apply the current Terraform configuration first."
+            exit 1
+          fi
+
+          {
+            printf 'ECR_REPOSITORY_URI=%s\n' "$ECR_REPOSITORY_URI"
+            printf 'EVENTS_QUEUE_URL=%s\n' "$EVENTS_QUEUE_URL"
+            printf 'EVENT_PRODUCER_ROLE_ARN=%s\n' "$EVENT_PRODUCER_ROLE_ARN"
+          } >> "$GITHUB_ENV"
 
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
@@ -51,6 +73,8 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          : "${ECR_REPOSITORY_URI:?ECR_REPOSITORY_URI is empty; verify the Terraform output}"
+          : "${IMAGE_TAG:?IMAGE_TAG is empty}"
           docker build --tag "$ECR_REPOSITORY_URI:$IMAGE_TAG" kubernetes/event-producer
           docker push "$ECR_REPOSITORY_URI:$IMAGE_TAG"
           echo "IMAGE_URI=$ECR_REPOSITORY_URI:$IMAGE_TAG" >> "$GITHUB_ENV"
