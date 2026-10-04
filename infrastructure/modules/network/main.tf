@@ -136,11 +136,14 @@ resource "aws_iam_role_policy" "vpc_flow_logs" {
       },
       {
         Effect = "Allow"
-        Action = [
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams"
-        ]
+        Action = "logs:DescribeLogGroups"
+        # CloudWatch Logs does not support resource-level permissions for DescribeLogGroups.
         Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "logs:DescribeLogStreams"
+        Resource = "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:log-stream:*"
       }
     ]
   })

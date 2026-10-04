@@ -19,6 +19,8 @@ spec:
     spec:
       securityContext:
         fsGroup: 10001
+        runAsGroup: 10001
+        runAsUser: 10001
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
@@ -36,6 +38,8 @@ spec:
               value: info
             - name: INTERVAL_SECONDS
               value: "60"
+            - name: HEALTH_FILE
+              value: /run/event-producer/health
           resources:
             requests:
               cpu: 50m
@@ -51,14 +55,14 @@ spec:
               drop:
                 - ALL
           volumeMounts:
-            - name: tmp
-              mountPath: /tmp
+            - name: health-state
+              mountPath: /run/event-producer
           readinessProbe:
             exec:
               command:
                 - python
                 - -c
-                - "import os,sys,time; p='/tmp/event-producer-health'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"
+                - "import os,sys,time; p='/run/event-producer/health'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
@@ -67,10 +71,11 @@ spec:
               command:
                 - python
                 - -c
-                - "import os,sys,time; p='/tmp/event-producer-health'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"
+                - "import os,sys,time; p='/run/event-producer/health'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
       volumes:
-        - name: tmp
-          emptyDir: {}
+        - name: health-state
+          emptyDir:
+            sizeLimit: 16Mi

@@ -11,6 +11,7 @@ data "archive_file" "event_query_api" {
 }
 
 data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "lambda_assume_role" {
   statement {
@@ -211,6 +212,7 @@ resource "aws_lambda_function" "event_processor" {
     variables = {
       EVENTS_TABLE_NAME         = var.events_table_name
       EVENT_ARCHIVE_BUCKET      = var.event_archive_bucket_name
+      EXPECTED_BUCKET_OWNER     = data.aws_caller_identity.current.account_id
       CRITICAL_EVENTS_TOPIC_ARN = var.critical_events_topic_arn
     }
   }

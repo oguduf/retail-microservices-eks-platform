@@ -30,8 +30,16 @@ def get_event(event_id):
 
 
 def list_events():
-    response = dynamodb.scan(TableName=EVENTS_TABLE_NAME, Limit=50)
-    events = [deserialize_item(item) for item in response.get("Items", [])]
+    paginator = dynamodb.get_paginator("scan")
+    pages = paginator.paginate(
+        TableName=EVENTS_TABLE_NAME,
+        PaginationConfig={"MaxItems": 50},
+    )
+    events = [
+        deserialize_item(item)
+        for page in pages
+        for item in page.get("Items", [])
+    ]
     events.sort(key=lambda item: item["timestamp"], reverse=True)
 
     return response_json(200, {"items": events})
