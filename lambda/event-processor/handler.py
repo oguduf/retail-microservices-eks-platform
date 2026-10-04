@@ -16,6 +16,7 @@ sns = boto3.client("sns")
 
 EVENTS_TABLE_NAME = os.environ["EVENTS_TABLE_NAME"]
 EVENT_ARCHIVE_BUCKET = os.environ["EVENT_ARCHIVE_BUCKET"]
+EXPECTED_BUCKET_OWNER = os.environ["EXPECTED_BUCKET_OWNER"]
 CRITICAL_EVENTS_TOPIC_ARN = os.environ["CRITICAL_EVENTS_TOPIC_ARN"]
 
 REQUIRED_FIELDS = {"eventId", "service", "severity", "message", "timestamp"}
@@ -60,6 +61,7 @@ def archive_event(monitoring_event):
 
     s3.put_object(
         Bucket=EVENT_ARCHIVE_BUCKET,
+        ExpectedBucketOwner=EXPECTED_BUCKET_OWNER,
         Key=object_key,
         Body=json.dumps(monitoring_event).encode("utf-8"),
         ContentType="application/json",

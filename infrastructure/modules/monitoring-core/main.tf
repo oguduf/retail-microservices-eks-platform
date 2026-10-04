@@ -64,6 +64,32 @@ resource "aws_s3_bucket" "event_archive" {
   }
 }
 
+data "aws_iam_policy_document" "event_archive" {
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.event_archive.arn, "${aws_s3_bucket.event_archive.arn}/*"]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "event_archive" {
+  bucket = aws_s3_bucket.event_archive.id
+  policy = data.aws_iam_policy_document.event_archive.json
+}
+
 resource "aws_kms_key" "event_archive" {
   description             = "Encrypt ${var.project_name}-${var.environment} monitoring event data"
   enable_key_rotation     = true
@@ -164,6 +190,25 @@ data "aws_iam_policy_document" "event_archive_access_logs" {
       test     = "StringEquals"
       variable = "aws:SourceAccount"
       values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.event_archive_access_logs.arn, "${aws_s3_bucket.event_archive_access_logs.arn}/*"]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
     }
   }
 }

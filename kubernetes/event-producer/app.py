@@ -17,7 +17,7 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "kubernetes-event-producer")
 EVENT_SEVERITY = os.getenv("EVENT_SEVERITY", "info")
 EVENT_MESSAGE = os.getenv("EVENT_MESSAGE", "Kubernetes event producer heartbeat")
 INTERVAL_SECONDS = int(os.getenv("INTERVAL_SECONDS", "60"))
-HEALTH_FILE = os.getenv("HEALTH_FILE", "/tmp/event-producer-health")
+HEALTH_FILE = os.getenv("HEALTH_FILE", "/run/event-producer/health")
 
 sqs = boto3.client("sqs")
 
