@@ -63,10 +63,20 @@ The project reuses the existing `us-east-2` VPC, EKS cluster, worker nodes, EKS 
 ```text
 infrastructure/       Terraform bootstrap, modules, and dev environment
 kubernetes/           Namespace and event-producer Kubernetes manifests
+helm/                 Development values for the AWS Load Balancer Controller chart
 lambda/               Event processor and query API Lambda code
 docs/                 Architecture, runbook, and demo evidence
 .github/workflows/    Terraform, platform deployment, and security workflows
 ```
+
+## GitHub Actions workflows
+
+| Workflow file | Purpose |
+|---|---|
+| `.github/workflows/terraform-dev.yml` | Manually plans development infrastructure changes, and applies the saved plan when `apply` is selected. Uses the existing S3 remote state and OIDC role. |
+| `.github/workflows/deploy-event-producer.yml` | Manually builds and pushes the monitoring event-producer image, applies its Kubernetes resources to EKS, and checks the rollout. It reads deployment values from Terraform state. |
+| `.github/workflows/deploy-load-balancer-controller.yml` | Manually installs or upgrades the AWS Load Balancer Controller with Helm, using `helm/aws-load-balancer-controller/values-dev.yaml`, then verifies its rollout. |
+| `.github/workflows/security.yml` | Scans pushes to `dev`, pull requests to `main`, and manual runs for secrets, infrastructure/configuration issues, and high or critical dependency vulnerabilities. |
 
 ## Delivery flow
 
