@@ -18,6 +18,14 @@ The `dev` Terraform workflow completed successfully. The run summary identifies 
 
 ![Terraform job steps showing successful OIDC, remote state, plan, and apply](demo-evidence/terraform-apply-steps.png)
 
+### Event producer deployment
+
+Deploy Event Producer workflow run #2 completed successfully on branch dev at commit fd924ad. The job resolved deployment values from Terraform state, built and pushed the image, deployed the producer, and verified its rollout in EKS.
+
+![Successful event producer deployment workflow summary](demo-evidence/event-producer-deploy-summary.png)
+
+![Event producer deployment steps showing image build and push and successful EKS rollout](demo-evidence/event-producer-deploy-steps.png)
+
 ### Coffee Store application deployment
 
 These screenshots show a successful application deployment job, including catalog tests, image scanning/building, pushing five application images, connecting to EKS, applying manifests, and verifying rollouts. They document the application deployment workflow, not a producer-only workflow; the screenshots do not show the repository or run title.
