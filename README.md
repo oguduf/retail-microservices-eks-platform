@@ -1,5 +1,7 @@
 # Roast & Relay Coffee Store and Event-Driven Monitoring on AWS
 
+The Coffee Store application source, local development setup, and AWS deployment manifests are maintained in the [retail-application repository](https://github.com/oguduf/retail-application).
+
 This repository manages the shared AWS development platform for the Roast & Relay Coffee Store and its separate Kubernetes event-driven monitoring demo. Terraform manages AWS infrastructure; GitHub Actions uses OIDC for infrastructure and application delivery.
 
 ## Architecture
