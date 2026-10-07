@@ -4,13 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Choose whether to preview or apply development infrastructure changes."
+        description: "Choose a Terraform operation or clean up the development Kubernetes workloads."
         required: true
         default: plan
         type: choice
         options:
           - plan
           - apply
+          - destroy-plan
+          - destroy-apply
+          - cleanup-kubernetes
 
 permissions:
   contents: read
@@ -48,18 +51,50 @@ jobs:
           role-session-name: GudufRetailEksTerraformDev
 
       - name: Initialize Terraform remote state
+        if: ${{ inputs.operation != 'cleanup-kubernetes' }}
         run: terraform init -input=false -reconfigure -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=environments/dev/terraform.tfstate" -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true"
 
       - name: Format and validate Terraform
+        if: ${{ inputs.operation != 'cleanup-kubernetes' }}
         run: |
           terraform fmt -check -recursive ../..
           terraform validate
 
+      - name: Inspect Kubernetes resources and retained EBS volumes
+        if: ${{ inputs.operation == 'cleanup-kubernetes' }}
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --region "${{ vars.AWS_REGION }}" --name "guduf-retail-eks-dev"
+          echo "Kubernetes context:"
+          kubectl config current-context
+          echo "Ingresses and Services:"
+          kubectl get ingress,svc --all-namespaces
+          echo "Coffee Store PVCs:"
+          kubectl get pvc --namespace coffee-store --output wide
+          echo "EBS volume IDs backing Coffee Store PVs (save these from the run log):"
+          kubectl get pv --output json | jq -r '.items[] | select(.spec.claimRef.namespace == "coffee-store") | [.metadata.name, .spec.claimRef.name, .spec.csi.volumeHandle] | @tsv'
+
+      - name: Delete the application Ingress and project namespaces
+        if: ${{ inputs.operation == 'cleanup-kubernetes' }}
+        run: |
+          set -euo pipefail
+          kubectl delete ingress coffee-store --namespace coffee-store --ignore-not-found=true --wait=true --timeout=10m
+          kubectl delete namespace coffee-store monitoring-dev --ignore-not-found=true --wait=true --timeout=10m
+          echo "Remaining retained Coffee Store PVs and EBS volume IDs:"
+          kubectl get pv --output json | jq -r '.items[] | select(.spec.claimRef.namespace == "coffee-store") | [.metadata.name, .status.phase, .spec.claimRef.name, .spec.csi.volumeHandle] | @tsv'
+
       - name: Create Terraform plan
+        if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}
         env:
           TF_VAR_monitoring_alert_email: ${{ vars.MONITORING_ALERT_EMAIL }}
         run: terraform plan -input=false -out=tfplan -var="aws_region=${{ vars.AWS_REGION }}" -var="project_name=${{ vars.PROJECT_NAME }}" -var="environment=${{ vars.ENVIRONMENT }}"
 
+      - name: Create Terraform destroy plan
+        if: ${{ inputs.operation == 'destroy-plan' || inputs.operation == 'destroy-apply' }}
+        env:
+          TF_VAR_monitoring_alert_email: ${{ vars.MONITORING_ALERT_EMAIL }}
+        run: terraform plan -destroy -input=false -out=tfplan -var="aws_region=${{ vars.AWS_REGION }}" -var="project_name=${{ vars.PROJECT_NAME }}" -var="environment=${{ vars.ENVIRONMENT }}"
+
       - name: Apply Terraform plan
-        if: ${{ inputs.operation == 'apply' }}
+        if: ${{ inputs.operation == 'apply' || inputs.operation == 'destroy-apply' }}
         run: terraform apply -input=false -auto-approve tfplan
