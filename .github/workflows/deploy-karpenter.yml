@@ -1,0 +1,131 @@
+name: Deploy Karpenter autoscaling
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karpenter-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+  ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require successful platform CI for the dev commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "::error::Select the dev branch for this deployment."
+            exit 1
+          fi
+          if ! gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --status success \
+            --json headSha,conclusion --limit 100 |
+            jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .headSha == $sha and .conclusion == "success")' >/dev/null; then
+            echo "::error::No successful platform CI push run was found for commit $GITHUB_SHA."
+            exit 1
+          fi
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: GudufRetailKarpenterDev
+
+      - name: Resolve Karpenter deployment values from Terraform state
+        working-directory: infrastructure/environments/dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform init -input=false -reconfigure \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=environments/dev/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="use_lockfile=true"
+          CONTROLLER_ROLE_ARN="$(terraform output -raw karpenter_controller_role_arn)"
+          NODE_ROLE_NAME="$(terraform output -raw karpenter_node_role_name)"
+          if [[ -z "$CONTROLLER_ROLE_ARN" || -z "$NODE_ROLE_NAME" ]]; then
+            echo "::error::Karpenter Terraform outputs are empty. Apply the current infrastructure configuration first."
+            exit 1
+          fi
+          {
+            printf 'CONTROLLER_ROLE_ARN=%s\n' "$CONTROLLER_ROLE_ARN"
+            printf 'NODE_ROLE_NAME=%s\n' "$NODE_ROLE_NAME"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v5.1.0
+        with:
+          version: v1.36.1
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Connect to Amazon EKS
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Install Karpenter controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          cluster_endpoint="$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query 'cluster.endpoint' --output text)"
+          helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+            --namespace kube-system \
+            --version 1.13.0 \
+            --set replicas=1 \
+            --set settings.clusterName="$EKS_CLUSTER_NAME" \
+            --set settings.clusterEndpoint="$cluster_endpoint" \
+            --set "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=$CONTROLLER_ROLE_ARN" \
+            --set controller.resources.requests.cpu=250m \
+            --set controller.resources.requests.memory=512Mi \
+            --set controller.resources.limits.cpu=1 \
+            --set controller.resources.limits.memory=1Gi \
+            --wait --timeout 10m
+
+      - name: Apply bounded Karpenter node capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed \
+            -e "s/KARPENTER_NODE_ROLE_NAME/${NODE_ROLE_NAME}/g" \
+            -e "s/KARPENTER_CLUSTER_NAME/${EKS_CLUSTER_NAME}/g" \
+            -e "s/KARPENTER_PROJECT_NAME/${PROJECT_NAME}/g" \
+            -e "s/KARPENTER_ENVIRONMENT/${ENVIRONMENT}/g" \
+            kubernetes/autoscaling/karpenter.yaml | kubectl apply -f -
+          kubectl wait --for=condition=Ready nodepool/dev --timeout=5m
+          kubectl get nodepool,ec2nodeclass

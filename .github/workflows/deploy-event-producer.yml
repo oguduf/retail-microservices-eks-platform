@@ -5,7 +5,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: event-producer-dev
@@ -17,8 +16,37 @@ env:
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
 
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require successful platform CI for the dev commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "::error::Select the dev branch for this deployment."
+            exit 1
+          fi
+          if ! gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --status success \
+            --json headSha,conclusion --limit 100 |
+            jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .headSha == $sha and .conclusion == "success")' >/dev/null; then
+            echo "::error::No successful platform CI push run was found for commit $GITHUB_SHA."
+            exit 1
+          fi
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Check out repository
@@ -69,13 +97,17 @@ jobs:
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
 
-      - name: Build and push image
+      - name: Set up Trivy for image scan
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      - name: Build, scan, and push image
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           : "${ECR_REPOSITORY_URI:?ECR_REPOSITORY_URI is empty; verify the Terraform output}"
           : "${IMAGE_TAG:?IMAGE_TAG is empty}"
           docker build --tag "$ECR_REPOSITORY_URI:$IMAGE_TAG" kubernetes/event-producer
+          trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$ECR_REPOSITORY_URI:$IMAGE_TAG"
           docker push "$ECR_REPOSITORY_URI:$IMAGE_TAG"
           echo "IMAGE_URI=$ECR_REPOSITORY_URI:$IMAGE_TAG" >> "$GITHUB_ENV"
 

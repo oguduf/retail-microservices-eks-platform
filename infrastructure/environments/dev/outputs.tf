@@ -23,6 +23,16 @@ output "eks_cluster_name" {
   value       = module.eks.cluster_name
 }
 
+output "orders_database_endpoint" {
+  description = "Private DNS endpoint for the Orders PostgreSQL database."
+  value       = module.database.address
+}
+
+output "orders_database_secret_arn" {
+  description = "Secrets Manager ARN for RDS-managed Orders database credentials."
+  value       = module.database.master_user_secret_arn
+}
+
 output "eks_cluster_endpoint" {
   description = "EKS Kubernetes API endpoint."
   value       = module.eks.cluster_endpoint
@@ -78,6 +88,26 @@ output "order_event_publisher_role_arn" {
   value       = module.messaging.order_event_publisher_role_arn
 }
 
+output "karpenter_controller_role_arn" {
+  description = "IRSA role ARN used by the Karpenter controller."
+  value       = module.eks.karpenter_controller_role_arn
+}
+
+output "karpenter_node_role_name" {
+  description = "EC2 node role name used by Karpenter-provisioned nodes."
+  value       = module.eks.karpenter_node_role_name
+}
+
+output "order_db_migrator_role_arn" {
+  description = "IRSA role used only by the one-shot Orders database bootstrap Job."
+  value       = module.messaging.order_database_migrator_role_arn
+}
+
+output "inventory_service_role_arn" {
+  description = "IRSA role ARN used by Inventory to connect to PostgreSQL as inventory_app."
+  value       = module.messaging.inventory_service_role_arn
+}
+
 output "notification_consumer_role_arn" {
   description = "IRSA role ARN used by the notification service to consume and publish notifications."
   value       = module.messaging.notification_consumer_role_arn
@@ -86,11 +116,6 @@ output "notification_consumer_role_arn" {
 output "load_balancer_controller_role_arn" {
   description = "IAM role ARN used by the AWS Load Balancer Controller."
   value       = module.eks.load_balancer_controller_role_arn
-}
-
-output "ebs_csi_driver_role_arn" {
-  description = "IAM role used by the EBS CSI driver add-on through IRSA."
-  value       = module.eks.ebs_csi_driver_role_arn
 }
 
 output "monitoring_events_queue_url" {

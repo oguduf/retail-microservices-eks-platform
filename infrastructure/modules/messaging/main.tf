@@ -2,6 +2,8 @@ locals {
   eks_oidc_issuer = replace(var.eks_oidc_issuer_url, "https://", "")
 }
 
+data "aws_caller_identity" "current" {}
+
 data "aws_kms_alias" "sns" {
   name = "alias/aws/sns"
 }
@@ -137,6 +139,99 @@ resource "aws_iam_role_policy" "order_event_publisher" {
       Effect   = "Allow"
       Action   = "events:PutEvents"
       Resource = aws_cloudwatch_event_bus.retail.arn
+      }, {
+      Sid      = "ConnectToOrdersDatabaseAsApplicationUser"
+      Effect   = "Allow"
+      Action   = "rds-db:connect"
+      Resource = "arn:aws:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.order_database_resource_id}/orders_app"
+    }]
+  })
+}
+
+data "aws_iam_policy_document" "order_database_migrator_assume_role" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Federated"
+      identifiers = [var.eks_oidc_provider_arn]
+    }
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer}:sub"
+      values   = ["system:serviceaccount:coffee-store:order-db-migrator"]
+    }
+  }
+}
+
+resource "aws_iam_role" "order_database_migrator" {
+  name               = "${var.project_name}-${var.environment}-order-db-migrator-role"
+  assume_role_policy = data.aws_iam_policy_document.order_database_migrator_assume_role.json
+}
+
+resource "aws_iam_role_policy" "order_database_migrator" {
+  name = "${var.project_name}-${var.environment}-order-db-migrator-policy"
+  role = aws_iam_role.order_database_migrator.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadRdsManagedMasterCredentialForSchemaBootstrap"
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = var.order_database_secret_arn
+      },
+      {
+        Sid      = "DecryptRdsManagedMasterCredential"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = var.order_database_kms_key_arn
+      }
+    ]
+  })
+}
+
+data "aws_iam_policy_document" "inventory_service_assume_role" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Federated"
+      identifiers = [var.eks_oidc_provider_arn]
+    }
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer}:sub"
+      values   = ["system:serviceaccount:coffee-store:inventory-service"]
+    }
+  }
+}
+
+resource "aws_iam_role" "inventory_service" {
+  name               = "${var.project_name}-${var.environment}-inventory-service-role"
+  assume_role_policy = data.aws_iam_policy_document.inventory_service_assume_role.json
+}
+
+resource "aws_iam_role_policy" "inventory_service_database" {
+  name = "${var.project_name}-${var.environment}-inventory-database-policy"
+  role = aws_iam_role.inventory_service.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ConnectAsInventoryDatabaseUser"
+      Effect   = "Allow"
+      Action   = "rds-db:connect"
+      Resource = "arn:aws:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.order_database_resource_id}/inventory_app"
     }]
   })
 }
@@ -192,6 +287,12 @@ resource "aws_iam_role_policy" "notification_consumer" {
           "kms:GenerateDataKey*"
         ]
         Resource = data.aws_kms_alias.sns.target_key_arn
+      },
+      {
+        Sid      = "ConnectAsNotificationsDatabaseUser"
+        Effect   = "Allow"
+        Action   = "rds-db:connect"
+        Resource = "arn:aws:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.order_database_resource_id}/notifications_app"
       }
     ]
   })
