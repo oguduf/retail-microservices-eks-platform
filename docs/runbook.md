@@ -34,7 +34,7 @@
 
 After a failed Helm rollout, check `kubectl logs job/coffee-store-orders-db-migration -n coffee-store` first. Then inspect affected Pod events/logs and `/ready`; verify `ORDERS_DATABASE_HOST`, secret ARN, the service-account annotation, `rds-db:connect`, the RDS security group, and that the database role (`orders_app`, `inventory_app`, or `notifications_app`) has `rds_iam` and schema grants. Do not grant runtime roles access to the master secret. If HPA shows `<unknown>`, check Metrics Server and `kubectl top pods -n coffee-store` before tuning CPU thresholds. Check the CloudWatch dashboard and RDS alarms for load/connection/storage evidence.
 
-Single-AZ RDS and its disposable-lab destroy settings are not an HA architecture; RDS deletion skips a final snapshot. Back up anything needed before infrastructure teardown. For production, use Multi-AZ or Aurora only after defining availability, recovery, and cost requirements.
+Multi-AZ RDS has a standby for database failover, but the overall lab is not an HA architecture: the single NAT Gateway and baseline EKS node remain availability limitations. RDS deletion skips a final snapshot. Back up anything needed before infrastructure teardown, and test failover and restore before relying on the database for production recovery.
 
 ## Order appears but its update or email is missing
 
@@ -50,6 +50,8 @@ Single-AZ RDS and its disposable-lab destroy settings are not an HA architecture
 2. Review every proposed create, update, and destroy action, especially shared VPC and EKS resources.
 3. Confirm `Platform CI` passed on the exact `dev` commit, then apply only after the plan matches the intended change. The workflow enforces this CI check for a normal `apply`; plan, drift detection, cleanup, and destroy operations remain available without it.
 4. Verify the AWS resource and Terraform workflow result.
+
+The Terraform GitHub OIDC role must be allowed to create and attach the RDS Enhanced Monitoring IAM role and pass that role to RDS. Review the plan for the Multi-AZ standby and 60-second monitoring interval before applying; both increase spend. RDS publishes Enhanced Monitoring data to the `RDSOSMetrics` CloudWatch Logs group.
 
 ## Kubernetes autoscaling
 

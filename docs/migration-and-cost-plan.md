@@ -2,7 +2,7 @@
 
 ## Migration objective
 
-Move AWS Orders, Inventory, and Notifications from SQLite/EBS persistence to one private RDS PostgreSQL instance, with separate schemas and database users for each service. RDS PostgreSQL is the lab choice because a single-AZ managed instance meets the relational-database requirement without introducing Aurora's cluster architecture and baseline cost; reevaluate Aurora only if measured availability, recovery, or scaling requirements justify it. Keep local Docker Compose on SQLite so developers can run the app without AWS credentials. Sharing one instance reduces the lab's database footprint, but it does not provide independent failure domains or production-grade high availability.
+Move AWS Orders, Inventory, and Notifications from SQLite/EBS persistence to one private Multi-AZ RDS PostgreSQL instance, with separate schemas and database users for each service. The standby demonstrates managed database failover, at a higher cost than Single-AZ; Aurora's cluster architecture is not needed for this lab. Keep local Docker Compose on SQLite so developers can run the app without AWS credentials. Sharing one instance reduces the lab's database footprint, but it does not provide independent failure domains for the three services or make the whole platform highly available.
 
 The Week 3 AWS environment has already been cleaned up. This is a fresh target deployment, not a live data migration: no old order, inventory, or notification records are copied. If any local SQLite database is discovered and its records matter, stop and decide whether to preserve them. Export, transform, reconcile row counts and sample records, then cut over; do not simply point the app at an empty database.
 
@@ -16,7 +16,7 @@ The Week 3 AWS environment has already been cleaned up. This is a fresh target d
 
 ## Cost controls and measurement
 
-Configured controls include a single NAT Gateway, a small single-AZ RDS instance by default, RDS storage autoscaling capped at 50 GiB, fixed EKS node-group bounds, ECR lifecycle retention, 14-day EKS/RDS log retention, and S3 lifecycle expiration. PostgreSQL exports DDL and slow-query logs (queries taking at least one second); it does not log every statement because SQL can contain sensitive data. Product/Order HPA min/max is 1/3 replicas. HPA scales Pods only; the managed node group does not autoscale in this configuration.
+Configured controls include a single NAT Gateway, a small Multi-AZ RDS instance by default, RDS storage autoscaling capped at 50 GiB, bounded EKS capacity, ECR lifecycle retention, 14-day EKS/RDS database log retention, and S3 lifecycle expiration. Enhanced Monitoring samples RDS OS metrics every 60 seconds; its `RDSOSMetrics` CloudWatch Logs group has a separate default retention period and ingestion/storage cost. PostgreSQL exports DDL and slow-query logs (queries taking at least one second); it does not log every statement because SQL can contain sensitive data. Product/Order HPA min/max is 1/3 replicas. HPA scales Pods; Karpenter can add bounded node capacity when Pods cannot be scheduled.
 
 The Terraform cost budget defaults to a $200 monthly threshold and creates 80% actual / 100% forecast notifications only when `MONITORING_ALERT_EMAIL` is set. AWS Budgets is alerting, not a spending cap. It cannot terminate infrastructure.
 
@@ -24,14 +24,14 @@ No before/after AWS Cost Explorer data is available because the Week 3 resources
 
 | Candidate | Evidence to collect | Change to evaluate | Actual monthly impact |
 |---|---|---|---|
-| RDS class and Multi-AZ | CPU, connections, storage, and RDS cost for the same period | Keep small single-AZ for lab; right-size or enable Multi-AZ only against measured load and availability objectives | Not measured yet |
+| RDS class and Multi-AZ | CPU, connections, storage, failover result, and RDS cost for the same period | Measure the standby cost and availability benefit; right-size only after observing workload and recovery needs | Not measured yet |
 | NAT Gateway | NAT hourly and data-processing charges; identify private-subnet egress traffic | Compare existing single NAT with VPC endpoints for high-volume AWS services; include endpoint hourly cost | Not measured yet |
 | EKS compute | Node CPU/memory requests versus observed utilization and EC2/EKS charges | Right-size requests/nodes; consider node autoscaling only when workload and schedule justify the operational cost | Not measured yet |
-| CloudWatch | Ingested GB, retained GB, and custom metric cardinality | Keep 14-day retention, filter low-value logs, and avoid high-cardinality custom metrics | Not measured yet |
+| CloudWatch | Ingested GB, retained GB, Enhanced Monitoring log volume, and custom metric cardinality | Keep application logs at 14-day retention; review `RDSOSMetrics` retention and avoid unnecessary high-frequency sampling | Not measured yet |
 | ECR | Stored image GB and old digest usage | Keep recent deployable digests and remove stale images through lifecycle policy | Not measured yet |
 
 For a credible cost report, capture the baseline before applying an optimization, estimate the expected change, apply one change at a time, and compare the same billing dimensions after enough data has accrued. Do not present estimates as realized savings.
 
 ## Production deltas
 
-Before production, enable Multi-AZ or Aurora based on the required RTO/RPO, deletion protection and final snapshots, tested point-in-time restore, private API access, node autoscaling, database connection pooling, formal versioned schema migrations, and verified PostgreSQL TLS server certificates. Add an authenticated API boundary and test the rollback procedure with representative data.
+Before production, define RTO/RPO and test Multi-AZ failover and point-in-time restore. Enable deletion protection and final snapshots, private API access, database connection pooling, formal versioned schema migrations, and verified PostgreSQL TLS server certificates. Add an authenticated API boundary and test the rollback procedure with representative data.

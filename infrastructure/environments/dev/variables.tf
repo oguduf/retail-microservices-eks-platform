@@ -92,9 +92,9 @@ variable "orders_db_instance_class" {
 }
 
 variable "orders_db_multi_az" {
-  description = "Enable a synchronous standby for higher availability; disabled by default to limit lab spend."
+  description = "Enable a synchronous standby for higher availability; enabled by default for the Week 4 deployment."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "monthly_budget_limit" {

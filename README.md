@@ -90,7 +90,7 @@ The dev root calls the component modules from `main.tf`. The database, budget, a
 
 1. GitHub Actions authenticates to AWS using OIDC.
 2. Terraform plans infrastructure changes against the existing S3 remote state.
-3. Terraform provisions the EKS CloudWatch Observability add-on, 14-day log retention, dashboard, RDS alarms, and a configurable monthly cost budget (email alerts require `MONITORING_ALERT_EMAIL`).
+3. Terraform provisions the EKS CloudWatch Observability add-on, 14-day application log retention, a dashboard, RDS alarms, 60-second RDS Enhanced Monitoring, and a configurable monthly cost budget (email alerts require `MONITORING_ALERT_EMAIL`).
 4. The platform `Deploy Karpenter autoscaling` workflow installs the controller and bounded NodePool after Terraform has created its IAM roles, EKS access entry, and subnet/security-group discovery tags.
 5. In `retail-application`, CI tests and scans the five services. A separate deployment workflow builds and pushes digest-pinned images, installs Metrics Server and VPA, deploys the Helm chart, and verifies rollouts, HPAs, and VPAs.
 6. The platform workflow separately builds and deploys the monitoring event producer; Lambda functions process monitoring SQS messages and serve queries through API Gateway.
@@ -114,4 +114,4 @@ Trivy's file-scoped, expiring lab exceptions are documented in `.trivyignore.yam
 
 ## Cost notes
 
-This design is a lab baseline, not a production HA deployment. RDS Multi-AZ is configurable but off by default, and RDS destroy skips a final snapshot. The NAT Gateway, EKS control plane/nodes, ALB, RDS, CloudWatch ingestion, and data transfer can all incur costs. A budget is an alert, not a hard cap. Production should enable deletion protection and final snapshots, choose Multi-AZ based on RTO/RPO, test restores, and validate per-AZ network resilience. Nothing in this repository update has been applied to AWS.
+This design is a lab baseline, not a production HA deployment. RDS Multi-AZ is enabled by default with a standby in another Availability Zone, and 60-second Enhanced Monitoring publishes OS metrics to CloudWatch Logs. Both increase cost; RDS destroy still skips a final snapshot. The single NAT Gateway and baseline EKS node remain availability limitations. The NAT Gateway, EKS control plane/nodes, ALB, RDS, CloudWatch ingestion, and data transfer can all incur costs. A budget is an alert, not a hard cap. Production should enable deletion protection and final snapshots, define RTO/RPO, test restores and failover, and validate per-AZ network resilience. Nothing in this repository update has been applied to AWS.

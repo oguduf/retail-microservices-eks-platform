@@ -62,6 +62,40 @@ resource "aws_security_group" "orders_database" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
+
+data "aws_region" "current" {}
+
+resource "aws_iam_role" "orders_enhanced_monitoring" {
+  name = "${var.project_name}-${var.environment}-orders-rds-monitoring"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "monitoring.rds.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
+        ArnEquals = {
+          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:rds:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:db:${var.project_name}-${var.environment}-orders"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "orders_enhanced_monitoring" {
+  role       = aws_iam_role.orders_enhanced_monitoring.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 resource "aws_db_instance" "orders" {
   #checkov:skip=CKV_AWS_293:Deletion protection is off only for this disposable dev lab so the reviewed destroy workflow can clean up.
   #checkov:skip=CKV_AWS_353:Performance Insights is disabled in the lab to limit telemetry cost; CloudWatch metrics and logs remain enabled.
@@ -86,6 +120,8 @@ resource "aws_db_instance" "orders" {
   vpc_security_group_ids              = [aws_security_group.orders_database.id]
   publicly_accessible                 = false
   multi_az                            = var.orders_db_multi_az
+  monitoring_interval                 = 60
+  monitoring_role_arn                 = aws_iam_role.orders_enhanced_monitoring.arn
   backup_retention_period             = 7
   auto_minor_version_upgrade          = true
   deletion_protection                 = false
@@ -97,4 +133,6 @@ resource "aws_db_instance" "orders" {
     Name       = "${var.project_name}-${var.environment}-orders"
     Repository = "retail-microservices-eks-platform"
   }
+
+  depends_on = [aws_iam_role_policy_attachment.orders_enhanced_monitoring]
 }
