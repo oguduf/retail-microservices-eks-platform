@@ -1,6 +1,5 @@
 clusterName: guduf-retail-eks-dev
 region: us-east-2
-vpcId: vpc-0b52e76ec8e18e7b2
 
 replicaCount: 2
 
