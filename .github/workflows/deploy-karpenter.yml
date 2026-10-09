@@ -2,6 +2,11 @@ name: Deploy Karpenter autoscaling
 
 on:
   workflow_dispatch:
+    inputs:
+      refresh_controller:
+        description: Recreate the Karpenter controller Pod once after an IAM policy update
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -116,6 +121,14 @@ jobs:
             --set controller.resources.limits.cpu=1 \
             --set controller.resources.limits.memory=1Gi \
             --wait --timeout 10m
+
+      - name: Refresh Karpenter controller after IAM update
+        if: ${{ inputs.refresh_controller }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl -n kube-system delete pod -l app.kubernetes.io/name=karpenter --wait=true
+          kubectl -n kube-system rollout status deployment/karpenter --timeout=5m
 
       - name: Apply bounded Karpenter node capacity
         shell: bash
