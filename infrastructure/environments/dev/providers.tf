@@ -6,7 +6,12 @@ provider "aws" {
       Project     = var.project_name
       Environment = var.environment
       ManagedBy   = "Terraform"
-      Repository  = "retail-infra-terraform"
+      Repository  = "retail-microservices-eks-platform"
     }
   }
+}
+
+provider "aws" {
+  alias  = "billing"
+  region = "us-east-1"
 }

@@ -33,6 +33,16 @@ output "order_event_publisher_role_arn" {
   value       = aws_iam_role.order_event_publisher.arn
 }
 
+output "order_database_migrator_role_arn" {
+  description = "IRSA role for the one-shot Orders database schema/bootstrap job."
+  value       = aws_iam_role.order_database_migrator.arn
+}
+
+output "inventory_service_role_arn" {
+  description = "IRSA role ARN for the Inventory service's least-privilege RDS IAM user."
+  value       = aws_iam_role.inventory_service.arn
+}
+
 output "notification_consumer_role_arn" {
   description = "IRSA role ARN for the notification service to consume SQS and publish SNS."
   value       = aws_iam_role.notification_consumer.arn

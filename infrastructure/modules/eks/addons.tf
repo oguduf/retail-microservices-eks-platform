@@ -31,8 +31,8 @@ resource "aws_eks_addon" "kube_proxy" {
   ]
 }
 
-resource "aws_iam_role" "ebs_csi_driver" {
-  name = "${var.cluster_name}-ebs-csi-driver-role"
+resource "aws_iam_role" "cloudwatch_observability" {
+  name = "${var.cluster_name}-cloudwatch-observability-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -45,27 +45,33 @@ resource "aws_iam_role" "ebs_csi_driver" {
       Condition = {
         StringEquals = {
           "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
-          "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+          "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:amazon-cloudwatch:cloudwatch-agent"
         }
       }
     }]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
-  role       = aws_iam_role.ebs_csi_driver.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2"
+resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
+  role       = aws_iam_role.cloudwatch_observability.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
-resource "aws_eks_addon" "ebs_csi_driver" {
+resource "aws_iam_role_policy_attachment" "cloudwatch_xray" {
+  role       = aws_iam_role.cloudwatch_observability.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
+
+resource "aws_eks_addon" "cloudwatch_observability" {
   cluster_name                = aws_eks_cluster.main.name
-  addon_name                  = "aws-ebs-csi-driver"
-  service_account_role_arn    = aws_iam_role.ebs_csi_driver.arn
+  addon_name                  = "amazon-cloudwatch-observability"
+  service_account_role_arn    = aws_iam_role.cloudwatch_observability.arn
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "PRESERVE"
 
   depends_on = [
     aws_eks_node_group.default,
-    aws_iam_role_policy_attachment.ebs_csi_driver
+    aws_iam_role_policy_attachment.cloudwatch_agent,
+    aws_iam_role_policy_attachment.cloudwatch_xray
   ]
 }

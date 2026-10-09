@@ -13,18 +13,22 @@ flowchart LR
 
     Browser --> ALB["Public ALB + ACM HTTPS"] --> Frontend["Coffee Store frontend on EKS"]
     Frontend --> Product["Product catalog"]
-    Frontend --> Inventory["Inventory API + SQLite on EBS"]
-    Frontend --> Orders["Order API + SQLite outbox on EBS"]
-    Frontend --> Notifications["Notification API + SQLite on EBS"]
+    Frontend --> Inventory["Inventory API"]
+    Frontend --> Orders["Order API + HPA on EKS"]
+    Frontend --> Notifications["Notification API"]
     Orders -->|catalog lookup| Product
     Orders -->|reserve stock| Inventory
-    Orders --> EventBus["EventBridge custom bus"] --> NotificationQueue["Notification SQS"] --> Notifications
+    Orders --> OrdersDB["Private RDS PostgreSQL"]
+    Inventory --> InventoryDB["RDS PostgreSQL · inventory schema"]
+    Notifications --> NotificationDB["RDS PostgreSQL · notifications schema"]
+    OutboxRelay["Singleton outbox relay"] --> OrdersDB
+    OutboxRelay --> EventBus["EventBridge custom bus"] --> NotificationQueue["Notification SQS"] --> Notifications
     EventBus -. target delivery failure .-> NotificationDLQ["Notification DLQ"]
     NotificationQueue -. retries exhausted .-> NotificationDLQ
     Notifications --> OrderTopic["Order notifications SNS"] --> Email["Confirmed email subscription"]
 ```
 
-The Coffee Store and monitoring producer share EKS but have separate event pipelines. The AWS app keeps SQLite for inventory, orders, and notification records on encrypted gp3 EBS volumes. The Order service reserves inventory over HTTP, commits the order with a transactional outbox event, and publishes `OrderCreated` to EventBridge. The Notification service consumes its SQS queue, records an update for the UI, and publishes a formatted SNS email. The monitoring queue sends operational events to Lambda for S3 archival and DynamoDB storage.
+The Coffee Store and monitoring producer share EKS but have separate event pipelines. Orders, Inventory, and Notifications use separate schemas and IAM-authenticated users on private encrypted PostgreSQL RDS; local Compose keeps SQLite for zero-AWS development. The Order API writes a transactional outbox record, and a singleton relay publishes `OrderCreated` to EventBridge. This avoids competing publishers when the Order API HPA adds replicas. The Notification service consumes its SQS queue, records an update for the UI, and publishes a formatted SNS email. The monitoring queue sends operational events to Lambda for S3 archival and DynamoDB storage.
 
 ## Components and responsibilities
 
@@ -36,13 +40,14 @@ The Coffee Store and monitoring producer share EKS but have separate event pipel
 
 ## Existing infrastructure reuse
 
-Reuse the existing VPC, EKS cluster, worker nodes, EKS OIDC provider, GitHub OIDC role, ECR service, and Terraform S3 state bucket. Create monitoring-specific queues, tables, archive bucket, topic, Lambda functions, and API Gateway resources.
+Terraform declares the VPC, EKS cluster, worker nodes, OIDC roles, ECR, RDS, event infrastructure, and monitoring services. AWS resources were cleaned up after the previous lab; this code update does not recreate them. The S3 Terraform state bucket must be bootstrapped before remote-state workflows can run.
 
-The retail EventBridge bus and notification queue are active parts of the Coffee Store. The existing RDS MySQL instance, Valkey cache, and retail DynamoDB inventory/notification tables are not used by the current application code. Their dev module calls and outputs have been removed locally so that Terraform will plan their deletion; no AWS deletion has been applied yet. Back up needed data and review the destroy plan before applying. The unused inventory SQS target, queue, and DLQ are also pending cleanup in the current local Terraform changes. The separate monitoring-events DynamoDB table remains in use.
+Terraform recreates the Coffee Store EventBridge bus, SQS notification queue, SNS topic, monitoring pipeline, and the Orders RDS database from this repository. No resources are currently created by these local code changes; the remote state bucket must be bootstrapped and a plan reviewed before applying.
 
 ## Identity and security
 
 - EKS event producer uses a dedicated Kubernetes service account and IRSA role scoped to `sqs:SendMessage` on its queue.
+- Each stateful app has an IRSA role with `rds-db:connect` scoped to its database user (`orders_app`, `inventory_app`, or `notifications_app`). A separate short-lived migration Job role reads the RDS-managed master secret only to bootstrap schemas, tables, and restricted database users.
 - Processor Lambda uses a dedicated role scoped to its queue, archive bucket prefix, DynamoDB table, and SNS topic.
 - Query Lambda has read-only access to the event table.
 - The archive bucket blocks public access, enables encryption, and uses lifecycle retention appropriate for the lab.
@@ -51,4 +56,4 @@ The retail EventBridge bus and notification queue are active parts of the Coffee
 
 ## Lab tradeoffs
 
-One EKS cluster and the existing two worker nodes are reused. The design uses one queue and one dead-letter queue to keep the pipeline understandable. Production would add stricter API authentication, retention and recovery objectives, idempotency controls, multi-account separation, and centralized alert routing.
+The dev environment uses a single NAT Gateway, a small single-AZ RDS instance, and fixed-size managed node group bounds to keep the lab understandable. Product and Order HPAs scale pods, but nodes do not automatically scale; pending Pods are a capacity signal. Production would use deliberate Multi-AZ database settings, deletion protection and final snapshots, node autoscaling, tested recovery objectives, authenticated public APIs, idempotency controls, multi-account separation, and centralized alert routing.

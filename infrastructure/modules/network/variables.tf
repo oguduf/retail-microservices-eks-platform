@@ -8,6 +8,11 @@ variable "environment" {
   type        = string
 }
 
+variable "cluster_name" {
+  description = "EKS cluster name used for Karpenter subnet discovery tags."
+  type        = string
+}
+
 variable "vpc_cidr" {
   description = "CIDR range for the VPC."
   type        = string

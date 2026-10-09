@@ -1,4 +1,4 @@
-name: Security checks
+name: Platform CI
 
 on:
   push:
@@ -13,6 +13,24 @@ permissions:
   contents: read
 
 jobs:
+  terraform-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Format, initialize without a backend, and validate
+        working-directory: infrastructure/environments/dev
+        run: |
+          terraform fmt -check -recursive ../..
+          terraform init -backend=false -input=false
+          terraform validate
+
   scan:
     runs-on: ubuntu-latest
     steps:
@@ -46,3 +64,20 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
           format: table
+
+  event-producer-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      - name: Build and scan the event-producer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="event-producer-ci:${GITHUB_SHA}"
+          docker build --tag "$image" kubernetes/event-producer
+          trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"

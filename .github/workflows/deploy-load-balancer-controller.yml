@@ -5,15 +5,43 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
 
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require successful platform CI for the dev commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "::error::Select the dev branch for this deployment."
+            exit 1
+          fi
+          if ! gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --status success \
+            --json headSha,conclusion --limit 100 |
+            jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .headSha == $sha and .conclusion == "success")' >/dev/null; then
+            echo "::error::No successful platform CI push run was found for commit $GITHUB_SHA."
+            exit 1
+          fi
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Check out repository

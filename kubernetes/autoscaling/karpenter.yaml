@@ -1,0 +1,62 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: dev
+spec:
+  role: KARPENTER_NODE_ROLE_NAME
+  amiSelectorTerms:
+    - alias: al2023@latest
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: KARPENTER_CLUSTER_NAME
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: KARPENTER_CLUSTER_NAME
+  tags:
+    Project: KARPENTER_PROJECT_NAME
+    Environment: KARPENTER_ENVIRONMENT
+    ManagedBy: Karpenter
+    "karpenter.sh/discovery": KARPENTER_CLUSTER_NAME
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev
+spec:
+  template:
+    metadata:
+      labels:
+        workload-tier: general
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+        - key: kubernetes.io/os
+          operator: In
+          values: [linux]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: [on-demand]
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: [c, m, r]
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gte
+          values: ["3"]
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: [medium, large, xlarge, 2xlarge]
+  limits:
+    nodes: 3
+    cpu: "12"
+    memory: 48Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 2m
+    budgets:
+      - nodes: "1"

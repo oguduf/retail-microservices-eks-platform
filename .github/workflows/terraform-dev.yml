@@ -1,10 +1,12 @@
 name: Terraform Infrastructure Development
 
 on:
+  schedule:
+    - cron: "17 12 * * 1"
   workflow_dispatch:
     inputs:
       operation:
-        description: "Choose a Terraform operation or clean up the development Kubernetes workloads."
+        description: "Choose a Terraform operation, drift check, or clean up the development Kubernetes workloads."
         required: true
         default: plan
         type: choice
@@ -13,9 +15,11 @@ on:
           - apply
           - destroy-plan
           - destroy-apply
+          - drift-detect
           - cleanup-kubernetes
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -28,6 +32,7 @@ env:
 
 jobs:
   terraform:
+    if: ${{ github.event_name != 'schedule' || vars.TF_STATE_BUCKET != '' }}
     runs-on: ubuntu-latest
 
     defaults:
@@ -37,6 +42,26 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Require successful platform CI before apply
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'apply' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "::error::Select the dev branch for an infrastructure apply."
+            exit 1
+          fi
+          if ! gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --status success \
+            --json headSha,conclusion --limit 100 |
+            jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .headSha == $sha and .conclusion == "success")' >/dev/null; then
+            echo "::error::No successful platform CI push run was found for commit $GITHUB_SHA."
+            exit 1
+          fi
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
@@ -50,6 +75,12 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: GudufRetailEksTerraformDev
 
+      - name: Set up Helm for Kubernetes cleanup
+        if: ${{ inputs.operation == 'cleanup-kubernetes' }}
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
       - name: Initialize Terraform remote state
         if: ${{ inputs.operation != 'cleanup-kubernetes' }}
         run: terraform init -input=false -reconfigure -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=environments/dev/terraform.tfstate" -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true"
@@ -60,7 +91,7 @@ jobs:
           terraform fmt -check -recursive ../..
           terraform validate
 
-      - name: Inspect Kubernetes resources and retained EBS volumes
+      - name: Inspect Kubernetes resources before cleanup
         if: ${{ inputs.operation == 'cleanup-kubernetes' }}
         run: |
           set -euo pipefail
@@ -71,8 +102,8 @@ jobs:
           kubectl get ingress,svc --all-namespaces
           echo "Coffee Store PVCs:"
           kubectl get pvc --namespace coffee-store --output wide
-          echo "EBS volume IDs backing Coffee Store PVs (save these from the run log):"
-          kubectl get pv --output json | jq -r '.items[] | select(.spec.claimRef.namespace == "coffee-store") | [.metadata.name, .spec.claimRef.name, .spec.csi.volumeHandle] | @tsv'
+          echo "Coffee Store PVCs (the RDS-backed AWS chart should not create any):"
+          kubectl get pvc --namespace coffee-store --output wide --ignore-not-found=true
 
       - name: Delete the application Ingress and project namespaces
         if: ${{ inputs.operation == 'cleanup-kubernetes' }}
@@ -80,8 +111,28 @@ jobs:
           set -euo pipefail
           kubectl delete ingress coffee-store --namespace coffee-store --ignore-not-found=true --wait=true --timeout=10m
           kubectl delete namespace coffee-store monitoring-dev --ignore-not-found=true --wait=true --timeout=10m
-          echo "Remaining retained Coffee Store PVs and EBS volume IDs:"
-          kubectl get pv --output json | jq -r '.items[] | select(.spec.claimRef.namespace == "coffee-store") | [.metadata.name, .status.phase, .spec.claimRef.name, .spec.csi.volumeHandle] | @tsv'
+          if kubectl get crd nodepools.karpenter.sh >/dev/null 2>&1; then
+            echo "Removing Karpenter capacity before infrastructure teardown..."
+            kubectl delete nodepool dev --ignore-not-found=true --wait=true --timeout=10m
+            for attempt in {1..60}; do
+              claims="$(kubectl get nodeclaims --output name 2>/dev/null || true)"
+              if [[ -z "$claims" ]]; then
+                break
+              fi
+              echo "Waiting for Karpenter-managed EC2 nodes to drain and terminate (attempt $attempt/60)..."
+              sleep 10
+            done
+            claims="$(kubectl get nodeclaims --output name 2>/dev/null || true)"
+            if [[ -n "$claims" ]]; then
+              echo "Karpenter NodeClaims remain; refusing to continue cleanup:" >&2
+              printf '%s\n' "$claims" >&2
+              exit 1
+            fi
+            kubectl delete ec2nodeclass dev --ignore-not-found=true --wait=true --timeout=5m
+            helm uninstall karpenter --namespace kube-system --ignore-not-found
+            kubectl delete crd ec2nodeclasses.karpenter.k8s.aws nodeclaims.karpenter.sh nodepools.karpenter.sh --ignore-not-found=true --wait=true
+          fi
+          echo "Coffee Store workloads and any Karpenter-provisioned nodes were removed. Stateful application data is in RDS; review and destroy the RDS resource only through the reviewed Terraform destroy plan."
 
       - name: Create Terraform plan
         if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}
@@ -98,3 +149,21 @@ jobs:
       - name: Apply Terraform plan
         if: ${{ inputs.operation == 'apply' || inputs.operation == 'destroy-apply' }}
         run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Detect infrastructure drift (scheduled or manual)
+        if: ${{ github.event_name == 'schedule' || inputs.operation == 'drift-detect' }}
+        env:
+          TF_VAR_monitoring_alert_email: ${{ vars.MONITORING_ALERT_EMAIL }}
+        run: |
+          set +e
+          terraform plan -input=false -detailed-exitcode -var="aws_region=${{ vars.AWS_REGION }}" -var="project_name=${{ vars.PROJECT_NAME }}" -var="environment=${{ vars.ENVIRONMENT }}"
+          result=$?
+          set -e
+          if [ "$result" -eq 2 ]; then
+            echo "::error::Terraform detected drift or unapplied changes. Review the plan; this workflow never applies scheduled changes."
+            exit 1
+          fi
+          if [ "$result" -ne 0 ]; then
+            exit "$result"
+          fi
+          echo "No Terraform drift detected."

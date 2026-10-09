@@ -70,19 +70,42 @@ variable "node_instance_types" {
 variable "node_desired_size" {
   description = "Desired number of EKS worker nodes."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "node_min_size" {
   description = "Minimum number of EKS worker nodes."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "node_max_size" {
   description = "Maximum number of EKS worker nodes."
   type        = number
-  default     = 4
+  default     = 1
+}
+
+variable "orders_db_instance_class" {
+  description = "RDS PostgreSQL instance class. Keep small in the development lab; increase after measuring workload."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "orders_db_multi_az" {
+  description = "Enable a synchronous standby for higher availability; disabled by default to limit lab spend."
+  type        = bool
+  default     = false
+}
+
+variable "monthly_budget_limit" {
+  description = "Monthly AWS cost alert threshold in USD. This sends alerts; it does not stop resources or cap spend."
+  type        = number
+  default     = 200
+
+  validation {
+    condition     = var.monthly_budget_limit > 0
+    error_message = "monthly_budget_limit must be greater than zero."
+  }
 }
 
 variable "monitoring_alert_email" {
