@@ -129,3 +129,22 @@ jobs:
             kubernetes/autoscaling/karpenter.yaml | kubectl apply -f -
           kubectl wait --for=condition=Ready nodepool/dev --timeout=5m
           kubectl get nodepool,ec2nodeclass
+
+      - name: Diagnose Karpenter readiness failure
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set +e
+          echo '=== NodePool conditions ==='
+          kubectl describe nodepool dev
+          echo '=== EC2NodeClass conditions ==='
+          kubectl describe ec2nodeclass dev
+          echo '=== Karpenter controller Pods ==='
+          kubectl -n kube-system get pods -l app.kubernetes.io/name=karpenter -o wide
+          echo '=== Recent controller logs ==='
+          kubectl -n kube-system logs deployment/karpenter --all-containers=true --tail=150
+          echo '=== NodeClaims and nodes ==='
+          kubectl get nodeclaims,nodes -o wide
+          echo '=== Recent cluster events ==='
+          kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 80
+          exit 0
