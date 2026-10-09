@@ -3,6 +3,7 @@ resource "aws_cloudwatch_log_group" "eks_application" {
 
   name              = "/aws/containerinsights/${var.cluster_name}/${each.value}"
   retention_in_days = 14
+  kms_key_id        = aws_kms_key.cloudwatch_logs.arn
 }
 
 resource "aws_cloudwatch_log_group" "orders_database" {
@@ -10,6 +11,7 @@ resource "aws_cloudwatch_log_group" "orders_database" {
 
   name              = "/aws/rds/instance/${var.orders_database_identifier}/${each.value}"
   retention_in_days = 14
+  kms_key_id        = aws_kms_key.cloudwatch_logs.arn
 }
 
 resource "aws_cloudwatch_metric_alarm" "orders_database_cpu" {
