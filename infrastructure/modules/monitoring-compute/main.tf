@@ -163,6 +163,17 @@ resource "aws_iam_role_policy" "event_processor" {
         Resource = var.events_table_arn
       },
       {
+        Sid      = "DecryptMonitoringEventsTableKey"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = var.event_archive_kms_key_arn
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "dynamodb.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
+      },
+      {
         Sid      = "ArchiveRawEvents"
         Effect   = "Allow"
         Action   = "s3:PutObject"
