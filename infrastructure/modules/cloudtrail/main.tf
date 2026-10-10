@@ -9,6 +9,11 @@ locals {
 }
 
 resource "aws_s3_bucket" "cloudtrail_logs" {
+  #checkov:skip=CKV_AWS_18:Server access logging is omitted for this cost-conscious development audit bucket; production should send access logs to a separate protected log archive.
+  #checkov:skip=CKV_AWS_21:Versioning is enabled by aws_s3_bucket_versioning.cloudtrail_logs below; Checkov 2.0.930 does not correlate the separate resource.
+  #checkov:skip=CKV_AWS_144:Cross-region replication is omitted for this single-region development log archive to avoid duplicate storage and replication charges; production audit retention should use a centralized replicated archive.
+  #checkov:skip=CKV_AWS_19:KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.cloudtrail_logs below; Checkov 2.0.930 does not correlate the separate resource.
+  #checkov:skip=CKV_AWS_145:Customer-managed KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.cloudtrail_logs below; Checkov 2.0.930 does not correlate the separate resource.
   bucket        = local.bucket_name
   force_destroy = false
 
@@ -41,8 +46,60 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail_logs" 
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.cloudtrail_logs.arn
     }
+
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_versioning" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_kms_key" "cloudtrail_logs" {
+  description             = "Encrypt ${local.trail_name} CloudTrail log files"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableAccountIAMPermissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudTrailToEncryptTrailLogs"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = ["kms:GenerateDataKey*", "kms:DescribeKey"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = local.trail_arn
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${local.trail_name}-cloudtrail-logs"
+    Project     = var.project_name
+    Environment = var.environment
   }
 }
 
@@ -57,6 +114,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
 
     expiration {
       days = 90
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
     }
   }
 }
@@ -98,8 +159,10 @@ resource "aws_s3_bucket_policy" "cloudtrail_logs" {
 }
 
 resource "aws_cloudtrail" "account_management_events" {
+  #checkov:skip=CKV2_AWS_10:CloudTrail delivers the audit archive to S3; CloudWatch Logs duplication is omitted in this development account to control ingestion and storage costs.
   name                          = local.trail_name
   s3_bucket_name                = aws_s3_bucket.cloudtrail_logs.id
+  kms_key_id                    = aws_kms_key.cloudtrail_logs.arn
   include_global_service_events = true
   is_multi_region_trail         = true
   enable_log_file_validation    = true
@@ -115,6 +178,7 @@ resource "aws_cloudtrail" "account_management_events" {
     aws_s3_bucket_policy.cloudtrail_logs,
     aws_s3_bucket_server_side_encryption_configuration.cloudtrail_logs,
     aws_s3_bucket_ownership_controls.cloudtrail_logs,
+    aws_s3_bucket_versioning.cloudtrail_logs,
     aws_s3_bucket_lifecycle_configuration.cloudtrail_logs,
   ]
 
