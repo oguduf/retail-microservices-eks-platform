@@ -1,4 +1,6 @@
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+data "aws_region" "current" {}
 
 resource "aws_sqs_queue" "events_dlq" {
   #checkov:skip=CKV_AWS_27:SSE-SQS is enabled below; Checkov 2.0.930 does not recognize SQS-managed encryption.
@@ -281,9 +283,68 @@ resource "aws_s3_bucket_lifecycle_configuration" "event_archive" {
   }
 }
 
+locals {
+  critical_events_topic_name = "${var.project_name}-${var.environment}-monitoring-critical-events"
+  critical_events_topic_arn  = "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${local.critical_events_topic_name}"
+  monitoring_alarm_arns = [
+    for name in [
+      "event-processor-errors",
+      "event-query-api-errors",
+      "monitoring-dlq-not-empty",
+      "order-notification-dlq-not-empty",
+      "retail-db-high-cpu",
+      "retail-db-low-storage",
+    ] : "arn:${data.aws_partition.current.partition}:cloudwatch:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:alarm:${var.project_name}-${var.environment}-${name}"
+  ]
+}
+
+resource "aws_kms_key" "critical_events_sns" {
+  description             = "Encrypt ${local.critical_events_topic_name} SNS notifications"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableAccountIAMPermissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudWatchAlarmsToEncryptNotifications"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudwatch.amazonaws.com"
+        }
+        Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = local.monitoring_alarm_arns
+          }
+          StringEquals = {
+            "aws:SourceAccount"                      = data.aws_caller_identity.current.account_id
+            "kms:EncryptionContext:aws:sns:topicArn" = local.critical_events_topic_arn
+          }
+        }
+      },
+    ]
+  })
+
+  tags = {
+    Name       = "${local.critical_events_topic_name}-sns"
+    Repository = "retail-microservices-eks-platform"
+  }
+}
+
 resource "aws_sns_topic" "critical_events" {
-  name              = "${var.project_name}-${var.environment}-monitoring-critical-events"
-  kms_master_key_id = "alias/aws/sns"
+  name              = local.critical_events_topic_name
+  kms_master_key_id = aws_kms_key.critical_events_sns.arn
 
   tags = {
     Repository = "retail-microservices-eks-platform"

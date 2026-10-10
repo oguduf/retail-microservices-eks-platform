@@ -184,6 +184,18 @@ resource "aws_iam_role_policy" "event_processor" {
         Effect   = "Allow"
         Action   = "sns:Publish"
         Resource = var.critical_events_topic_arn
+      },
+      {
+        Sid      = "EncryptCriticalEventNotifications"
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+        Resource = var.critical_events_kms_key_arn
+        Condition = {
+          StringEquals = {
+            "kms:ViaService"                         = "sns.${data.aws_region.current.name}.amazonaws.com"
+            "kms:EncryptionContext:aws:sns:topicArn" = var.critical_events_topic_arn
+          }
+        }
       }
     ]
   })

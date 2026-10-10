@@ -43,6 +43,11 @@ variable "critical_events_topic_arn" {
   type        = string
 }
 
+variable "critical_events_kms_key_arn" {
+  description = "ARN of the KMS key protecting the critical monitoring SNS topic."
+  type        = string
+}
+
 variable "eks_oidc_provider_arn" {
   description = "ARN of the EKS OIDC provider used for IRSA."
   type        = string
