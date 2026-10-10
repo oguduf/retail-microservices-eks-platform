@@ -107,6 +107,13 @@ module "observability" {
   critical_events_topic_arn  = module.monitoring_core.critical_events_topic_arn
 }
 
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
 module "budget" {
   source = "../../modules/budget"
 

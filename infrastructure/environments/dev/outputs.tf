@@ -23,6 +23,16 @@ output "eks_cluster_name" {
   value       = module.eks.cluster_name
 }
 
+output "cloudtrail_name" {
+  description = "Name of the account-level CloudTrail management-events trail."
+  value       = module.cloudtrail.trail_name
+}
+
+output "cloudtrail_log_bucket_name" {
+  description = "Name of the S3 bucket receiving CloudTrail logs."
+  value       = module.cloudtrail.log_bucket_name
+}
+
 output "orders_database_endpoint" {
   description = "Private DNS endpoint for the Orders PostgreSQL database."
   value       = module.database.address
