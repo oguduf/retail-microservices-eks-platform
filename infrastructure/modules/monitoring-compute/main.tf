@@ -163,6 +163,17 @@ resource "aws_iam_role_policy" "event_processor" {
         Resource = var.events_table_arn
       },
       {
+        Sid      = "DecryptMonitoringEventsTableKey"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = var.event_archive_kms_key_arn
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "dynamodb.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
+      },
+      {
         Sid      = "ArchiveRawEvents"
         Effect   = "Allow"
         Action   = "s3:PutObject"
@@ -184,6 +195,18 @@ resource "aws_iam_role_policy" "event_processor" {
         Effect   = "Allow"
         Action   = "sns:Publish"
         Resource = var.critical_events_topic_arn
+      },
+      {
+        Sid      = "EncryptCriticalEventNotifications"
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+        Resource = var.critical_events_kms_key_arn
+        Condition = {
+          StringEquals = {
+            "kms:ViaService"                         = "sns.${data.aws_region.current.name}.amazonaws.com"
+            "kms:EncryptionContext:aws:sns:topicArn" = var.critical_events_topic_arn
+          }
+        }
       }
     ]
   })

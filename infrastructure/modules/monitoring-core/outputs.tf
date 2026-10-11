@@ -42,3 +42,8 @@ output "critical_events_topic_arn" {
   description = "SNS topic ARN for critical monitoring event alerts."
   value       = aws_sns_topic.critical_events.arn
 }
+
+output "critical_events_kms_key_arn" {
+  description = "Customer-managed KMS key ARN for encrypted monitoring SNS alerts."
+  value       = aws_kms_key.critical_events_sns.arn
+}

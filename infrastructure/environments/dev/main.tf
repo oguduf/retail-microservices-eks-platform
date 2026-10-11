@@ -82,17 +82,18 @@ module "monitoring_core" {
 module "monitoring_compute" {
   source = "../../modules/monitoring-compute"
 
-  project_name              = var.project_name
-  environment               = var.environment
-  events_queue_arn          = module.monitoring_core.events_queue_arn
-  events_table_name         = module.monitoring_core.events_table_name
-  events_table_arn          = module.monitoring_core.events_table_arn
-  event_archive_bucket_name = module.monitoring_core.event_archive_bucket_name
-  event_archive_bucket_arn  = module.monitoring_core.event_archive_bucket_arn
-  event_archive_kms_key_arn = module.monitoring_core.event_archive_kms_key_arn
-  critical_events_topic_arn = module.monitoring_core.critical_events_topic_arn
-  eks_oidc_provider_arn     = module.eks.oidc_provider_arn
-  eks_oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
+  project_name                = var.project_name
+  environment                 = var.environment
+  events_queue_arn            = module.monitoring_core.events_queue_arn
+  events_table_name           = module.monitoring_core.events_table_name
+  events_table_arn            = module.monitoring_core.events_table_arn
+  event_archive_bucket_name   = module.monitoring_core.event_archive_bucket_name
+  event_archive_bucket_arn    = module.monitoring_core.event_archive_bucket_arn
+  event_archive_kms_key_arn   = module.monitoring_core.event_archive_kms_key_arn
+  critical_events_topic_arn   = module.monitoring_core.critical_events_topic_arn
+  critical_events_kms_key_arn = module.monitoring_core.critical_events_kms_key_arn
+  eks_oidc_provider_arn       = module.eks.oidc_provider_arn
+  eks_oidc_issuer_url         = module.eks.cluster_oidc_issuer_url
 }
 
 module "observability" {
@@ -104,6 +105,13 @@ module "observability" {
   cluster_name               = var.cluster_name
   orders_database_identifier = module.database.identifier
   critical_events_topic_arn  = module.monitoring_core.critical_events_topic_arn
+}
+
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  project_name = var.project_name
+  environment  = var.environment
 }
 
 module "budget" {

@@ -44,6 +44,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
           "ec2:DescribeLaunchTemplates",
           "ec2:DescribePlacementGroups",
           "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSpotPriceHistory",
           "ec2:DescribeSubnets"
         ]
         Resource = "*"
@@ -77,6 +78,20 @@ resource "aws_iam_role_policy" "karpenter_controller" {
           "arn:${data.aws_partition.current.partition}:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:capacity-reservation/*",
           "arn:${data.aws_partition.current.partition}:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:placement-group/*"
         ]
+      },
+      {
+        Sid      = "UseTaggedKarpenterLaunchTemplates"
+        Effect   = "Allow"
+        Action   = ["ec2:RunInstances", "ec2:CreateFleet"]
+        Resource = "arn:${data.aws_partition.current.partition}:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:launch-template/*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
+          }
+          StringLike = {
+            "aws:ResourceTag/karpenter.sh/nodepool" = "*"
+          }
+        }
       },
       {
         Sid    = "ManageTaggedKarpenterInstances"
