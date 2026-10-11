@@ -109,6 +109,8 @@ jobs:
         if: ${{ inputs.operation == 'cleanup-kubernetes' }}
         run: |
           set -euo pipefail
+          helm uninstall prometheus-grafana --namespace observability --ignore-not-found
+          kubectl delete namespace observability --ignore-not-found=true --wait=true --timeout=10m
           kubectl delete ingress coffee-store --namespace coffee-store --ignore-not-found=true --wait=true --timeout=10m
           kubectl delete namespace coffee-store monitoring-dev --ignore-not-found=true --wait=true --timeout=10m
           if kubectl get crd nodepools.karpenter.sh >/dev/null 2>&1; then

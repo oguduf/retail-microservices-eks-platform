@@ -31,6 +31,29 @@ jobs:
           terraform init -backend=false -input=false
           terraform validate
 
+  prometheus-grafana-helm-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Render pinned monitoring chart with development values
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update prometheus-community
+          helm template prometheus-grafana prometheus-community/kube-prometheus-stack \
+            --namespace observability \
+            --version 92.3.0 \
+            --values helm/prometheus-grafana/values-dev.yaml \
+            --include-crds > /tmp/prometheus-grafana-rendered.yaml
+
   scan:
     runs-on: ubuntu-latest
     steps:

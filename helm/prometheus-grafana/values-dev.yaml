@@ -1,0 +1,87 @@
+## Development-only kube-prometheus-stack configuration.
+## Grafana and Prometheus are not exposed outside the cluster.
+
+alertmanager:
+  enabled: false # CloudWatch alarms already provide the lab alerting path.
+
+defaultRules:
+  create: false # Avoid duplicate alerting rules while retaining default dashboards.
+
+grafana:
+  enabled: true
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  sidecar:
+    dashboards:
+      searchNamespace: observability
+  persistence:
+    enabled: false # Lab data is ephemeral; no EBS volume is created.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+
+prometheus:
+  enabled: true
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    replicas: 1
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    retention: 7d
+    retentionSize: 2GB
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+    # No persistent volume is configured; metrics are lost if the Pod is recreated.
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# EKS control-plane components aren't exposed as ordinary in-cluster endpoints.
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
