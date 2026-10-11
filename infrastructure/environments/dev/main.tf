@@ -16,6 +16,8 @@ module "network" {
 module "eks" {
   source = "../../modules/eks"
 
+  depends_on = [module.network]
+
   cluster_name       = var.cluster_name
   kubernetes_version = var.kubernetes_version
 
