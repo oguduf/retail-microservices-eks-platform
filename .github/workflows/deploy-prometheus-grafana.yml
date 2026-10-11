@@ -1,0 +1,116 @@
+name: Deploy Prometheus and Grafana
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prometheus-grafana-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require successful platform CI for the dev commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "::error::Select the dev branch for this deployment."
+            exit 1
+          fi
+          if ! gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --status success \
+            --json headSha,conclusion --limit 100 |
+            jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .headSha == $sha and .conclusion == "success")' >/dev/null; then
+            echo "::error::No successful platform CI push run was found for commit $GITHUB_SHA."
+            exit 1
+          fi
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: GudufRetailPrometheusGrafanaDev
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v5.1.0
+        with:
+          version: v1.36.1
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Connect to Amazon EKS
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Create namespace and Grafana credential Secret
+        shell: bash
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GRAFANA_ADMIN_PASSWORD" ]]; then
+            echo "::error::Add the GRAFANA_ADMIN_PASSWORD Actions secret before running this workflow."
+            exit 1
+          fi
+          kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic grafana-admin \
+            --namespace observability \
+            --from-literal=admin-user=admin \
+            --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Install pinned kube-prometheus-stack chart
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update prometheus-community
+          helm upgrade --install prometheus-grafana prometheus-community/kube-prometheus-stack \
+            --namespace observability \
+            --version 92.3.0 \
+            --values helm/prometheus-grafana/values-dev.yaml \
+            --wait --timeout 15m
+
+      - name: Verify monitoring workloads and services
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl get pods,svc --namespace observability --output wide
+          kubectl get prometheus,servicemonitors --namespace observability
+
+      - name: Diagnose deployment failure
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set +e
+          kubectl get pods,svc,pvc --namespace observability --output wide
+          kubectl get events --namespace observability --sort-by=.lastTimestamp | tail -n 60
+          exit 0

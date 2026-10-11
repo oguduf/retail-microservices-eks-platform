@@ -76,7 +76,11 @@ The `guduf-retail-eks-dev` multi-Region trail is logging management events to it
 
 ## Cost Explorer baseline
 
-The project-tagged Cost Explorer export records $9.04 in unblended costs for October 7–10, 2026. Costs appear on October 9 ($3.50) and October 10 ($5.54); the latter may be an incomplete day. Treat this as a short-period baseline, not a monthly estimate or proof of savings. The service breakdown identifies CloudWatch ($2.88), EKS ($2.45), EC2-Other ($1.34), EC2 instances ($1.30), and RDS ($0.90) as the largest categories.
+The refreshed, project-specific Cost Explorer export records $17.141 in unblended costs for October 7–11, 2026: $0 on October 7–8, $3.501 on October 9, $9.562 on October 10, and $4.078 on October 11. October 11 is a partial day, so this is a short-period baseline, not a monthly estimate or proof of savings. The refreshed service totals are EKS ($4.750), CloudWatch ($4.724), EC2 instances ($3.060), EC2-Other ($2.480), and RDS ($1.749). The dated export below is the current snapshot; the older October 7–10 export is retained as a prior snapshot and should not be treated as a comparable before/after measurement.
+
+[Refreshed Cost Explorer service breakdown CSV, October 7–11](demo-evidence/week4-cost-explorer-service-breakdown-2026-10-07-to-11.csv)
+
+The usage-type screenshots show EKS cluster-hours, CloudWatch observation/log usage, and EC2-Other charges led by NAT Gateway hours. These are candidate cost drivers to evaluate; no optimization savings have been measured.
 
 [Cost Explorer service breakdown CSV](demo-evidence/week4-cost-explorer-service-breakdown.csv)
 
