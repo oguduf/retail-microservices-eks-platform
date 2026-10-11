@@ -48,6 +48,11 @@ resource "aws_iam_role_policy_attachment" "node_cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
+resource "aws_iam_role_policy_attachment" "node_ssm_core" {
+  role       = aws_iam_role.nodes.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_cloudwatch_log_group" "cluster" {
   #checkov:skip=CKV_AWS_158:CloudWatch Logs already encrypts this development log group at rest with an AWS-owned key.
   name              = "/aws/eks/${var.cluster_name}/cluster"
@@ -108,6 +113,7 @@ resource "aws_eks_node_group" "default" {
   depends_on = [
     aws_iam_role_policy_attachment.node_worker_policy,
     aws_iam_role_policy_attachment.node_ecr_pull_policy,
-    aws_iam_role_policy_attachment.node_cni_policy
+    aws_iam_role_policy_attachment.node_cni_policy,
+    aws_iam_role_policy_attachment.node_ssm_core
   ]
 }
