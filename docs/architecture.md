@@ -40,9 +40,9 @@ The Coffee Store and monitoring producer share EKS but have separate event pipel
 
 ## Existing infrastructure reuse
 
-Terraform declares the VPC, EKS cluster, worker nodes, OIDC roles, ECR, RDS, event infrastructure, and monitoring services. AWS resources were cleaned up after the previous lab; this code update does not recreate them. The S3 Terraform state bucket must be bootstrapped before remote-state workflows can run.
+Terraform declares the VPC, EKS cluster, worker nodes, OIDC roles, ECR, RDS, event infrastructure, and monitoring services. The Week 3 environment was cleaned up, and the Week 4 development platform was then deployed from this repository. The S3 remote-state bucket must remain available for Terraform plan, apply, and drift checks; bootstrap it first in a fresh deployment.
 
-Terraform recreates the Coffee Store EventBridge bus, SQS notification queue, SNS topic, monitoring pipeline, and the Orders RDS database from this repository. No resources are currently created by these local code changes; the remote state bucket must be bootstrapped and a plan reviewed before applying.
+Terraform manages the Coffee Store EventBridge bus, SQS notification queue, SNS topic, monitoring pipeline, and PostgreSQL RDS database. Review the plan before applying future changes to these live resources.
 
 ## Identity and security
 

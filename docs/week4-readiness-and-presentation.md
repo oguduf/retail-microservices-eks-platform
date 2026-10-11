@@ -2,15 +2,15 @@
 
 ## Readiness summary
 
-The core Coffee Store platform is implemented and has live application, CloudWatch, alerting, and security-scan evidence. The project is not fully evidence-complete yet: there is no measured Cost Explorer baseline or realized savings comparison, the ALB 4xx spike is unresolved, and the latest security evidence predates the local CloudTrail Terraform addition. Present those as open items rather than implying they are complete.
+The core Coffee Store platform is implemented and has live application, CloudWatch, alerting, CloudTrail, Cost Explorer, and security-workflow evidence. The latest screenshots shared for this review show successful Platform CI, application CI, and application security workflow runs. The project has a short-period Cost Explorer baseline, but no measured before/after savings comparison. The ALB chart contains a historical 4xx spike; describe what the evidence shows without claiming the captured period was error-free or reopening the investigation already reviewed with the project owner.
 
 | Assignment area | Status | Evidence or remaining work |
 |---|---|---|
 | Containers and Kubernetes | Implemented; operational proof is partial | The application repo defines Helm workloads, health probes, CPU HPAs, bounded VPA policies, immutable image digests, and deployment smoke tests. Existing order/email screenshots prove a working customer path. Capture current Pods, Ingress, HPA, and VPA status if available. |
-| IaC and delivery automation | Implemented; current change needs CI | Terraform is modular, and the workflows validate code, run scans, use GitHub OIDC, deploy through Helm, and support scheduled drift checks. The CloudTrail code has not been applied and must pass CI and a reviewed remote-state plan first. The application deployment workflow has no `environment:` declaration for GitHub protected-environment approvals; verify repository settings or treat this as a gap. |
-| Security operations | Implemented with documented lab tradeoffs | The available Platform CI evidence reports 221 Checkov passes, zero failures, and 40 skips; Gitleaks reported no leaks in the one commit scanned. Trivy completed, but the saved output does not show finding totals. Rerun Platform CI after the CloudTrail change and save the current scan summary. Do not claim GuardDuty, Inspector, or Security Hub is deployed. |
-| Observability and incident response | Core path demonstrated; one metric needs follow-up | CloudWatch logs and resource metrics are present. The synthetic notification-DLQ test demonstrated alarm detection, SNS email delivery, and recovery. It was injected directly into the DLQ; it did not test automatic dead-lettering from the primary queue. Investigate the ALB 4xx spike. No 5xx datapoints in the captured range do not prove there were zero errors. |
-| Migration, cost, and optimization | Plan is documented; cost results are pending | Migration waves, validation, rollback, and five optimization candidates are documented. There is no Cost Explorer baseline or measured before/after impact yet, so describe these as recommendations—not realized savings. `Project` and `Environment` cost-allocation keys were shown active; use the exact `Environment` key (not the separate key with a trailing space). |
+| IaC and delivery automation | Implemented; approval gate configured | Terraform is modular, and the workflows validate code, run scans, use GitHub OIDC, deploy through Helm, and support scheduled drift checks. CloudTrail is applied and the trail logging status is verified in AWS. The application deployment workflow references the `dev` GitHub Environment; required reviewers were configured in GitHub. The approval pause itself will be exercised on a future deployment; no deployment is needed just to complete this evidence review. The latest Platform CI run shown for review succeeded. |
+| Security operations | Implemented with documented lab tradeoffs | The latest screenshots shared for review show the Platform CI scan and both application CI/security workflows succeeded. A successful workflow means configured gates passed; it does not by itself prove that every scanner found zero issues. The saved scan output does not provide current Trivy finding totals or a High/Critical ownership/remediation summary; capture those from the workflow logs/artifact before presenting. Do not claim GuardDuty, Inspector, or Security Hub is deployed. |
+| Observability and incident response | Core path demonstrated; known chart caveat | CloudWatch logs and resource metrics are present. The synthetic notification-DLQ test demonstrated alarm detection, SNS email delivery, and recovery. It was injected directly into the DLQ; it did not test automatic dead-lettering from the primary queue. The ALB chart includes a historical 4xx spike that was reviewed; describe the observation without claiming the captured range was error-free. |
+| Migration, cost, and optimization | Plan and initial baseline documented; savings not measured | Migration waves, validation, rollback, and five optimization candidates are documented. Cost Explorer exports show $9.04 in project-tagged unblended cost for October 7–10, 2026; this is a short, partly incomplete period, not a monthly estimate. No before/after impact has been measured, so describe the candidates as recommendations—not realized savings. `Project` and the correctly named `Environment` cost-allocation keys were shown active. |
 | Architecture and final presentation | Architecture is documented; slide deck not in these repos | The platform README contains Mermaid architecture diagrams. No PowerPoint file was found in the platform or application repositories. |
 
 ## Evidence to use
@@ -18,8 +18,8 @@ The core Coffee Store platform is implemented and has live application, CloudWat
 - Customer order and notification: `demo-evidence/coffee-store-orders-and-notifications.png` and `demo-evidence/coffee-store-sns-order-email.png`.
 - Runtime telemetry: `demo-evidence/week4-cloudwatch-platform-dashboard.png`, `demo-evidence/week4-cloudwatch-order-service-log.png`, and `demo-evidence/week4-alb-monitoring.png`.
 - Alert test: use the alarm-triggered, successful-action/email, recovered, and zero-count screenshots together. Explain that the test message was sent directly to the DLQ.
-- Security: the current saved scan evidence is tied to commit `3d3679f`; refresh it after the CloudTrail code passes CI.
-- Cost: add a Cost Explorer screenshot grouped by service and, where populated, filtered by the active `Project`/`Environment` tags. Until then, state that cost recommendations are proposed and savings are not measured.
+- Security: the latest screenshots shared for this review show Platform CI, application CI, and application security workflows succeeded. Before the presentation, save the current run screenshots/log summaries in this evidence folder and record scanner finding totals and any High/Critical dispositions. The existing saved Platform CI screenshot may still describe the older `3d3679f` run.
+- Cost: the two Cost Explorer CSV exports are in this evidence folder. They establish a short-period, project-tagged baseline, not monthly spend or realized savings. Add a console screenshot only if it improves presentation clarity; it is not needed to establish that the CSV baseline exists.
 
 ## 15-minute presentation outline
 
@@ -35,7 +35,7 @@ Place a test order, show it in order history, then show the matching in-app noti
 
 ### 6:00-9:00 — IaC, CI/CD, and Kubernetes operations
 
-Show Terraform modules and the workflow gates: validation, security scans, OIDC credentials, image scanning, Helm deployment, and post-deploy smoke tests. If showing autoscaling, use current HPA/VPA status. Describe CloudTrail as pending until the current code passes CI, the plan is reviewed, and it is applied.
+Show Terraform modules and the workflow gates: validation, security scans, OIDC credentials, image scanning, Helm deployment, and post-deploy smoke tests. If showing autoscaling, use current HPA/VPA status. Describe CloudTrail as active: the trail is multi-Region, logs management events to S3, has log-file validation and SSE-KMS enabled, and shows recent log delivery. It is an account trail, not organization-wide.
 
 ### 9:00-12:00 — Security, observability, and failure recovery
 
@@ -43,16 +43,16 @@ Show the CloudWatch dashboard and a structured application health log. Walk thro
 
 ### 12:00-14:00 — Migration and cost optimization
 
-Explain the fresh deployment and target database design, the migration validation and rollback plan, and the cost controls. Show Cost Explorer only after collecting the baseline. Present at least three recommendations with the observed usage/cost, proposed change, risk or tradeoff, and measured result. Until a before/after comparison exists, say “identified for evaluation,” not “savings achieved.”
+Explain the fresh deployment and target database design, the migration validation and rollback plan, and the cost controls. Show the Cost Explorer baseline exports and present at least three recommendations with observed usage/cost, proposed change, and risk or tradeoff. State clearly that measured before/after savings are not available; say “identified for evaluation,” not “savings achieved.”
 
 ### 14:00-15:00 — Risks, lessons, and next steps
 
-Call out the lab tradeoffs: one NAT Gateway, a single baseline EKS node, Multi-AZ RDS cost, and the remaining ALB 4xx investigation. Close with the next evidence actions: rerun CI, review CloudTrail plan, capture Cost Explorer, and resolve or explain the 4xx spike.
+Call out the lab tradeoffs: one NAT Gateway, a single baseline EKS node, Multi-AZ RDS cost, and the historical ALB 4xx spike shown in the captured chart. Close with remaining evidence actions: record current scanner finding totals/dispositions and assemble the final presentation. No CloudTrail apply, Cost Explorer baseline capture, CI rerun, or application redeployment is required for these already verified items.
 
 ## Claims to avoid until verified
 
 - “We saved X dollars” or “cost decreased by X%” without a comparable Cost Explorer baseline and after measurement.
-- “CloudTrail is enabled” until the Terraform plan is reviewed and the apply succeeds. The proposed trail captures account-wide management events, not only this project.
+- “CloudTrail is organization-wide” or captures only project events; the verified trail is multi-Region for account management events.
 - “There were zero errors” based only on missing 5xx datapoints in the selected ALB chart range.
 - “The DLQ automatically recovered messages” based on manually polling/redriving or directly injecting a test message.
 - “All images have zero vulnerabilities” based only on a successful Trivy step without its finding summary.

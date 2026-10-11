@@ -59,7 +59,7 @@ SQS, SNS, S3, DynamoDB, API Gateway, and CloudWatch are managed AWS services sup
 
 ## Terraform-managed platform
 
-Terraform defines the VPC, EKS, ECR, RDS PostgreSQL, messaging, and monitoring resources. The AWS resources were cleaned up after Week 3; this repository change does not create any AWS resources. Before applying, bootstrap the Terraform S3 state bucket and verify GitHub OIDC variables and permissions.
+Terraform defines the VPC, EKS, ECR, RDS PostgreSQL, messaging, and monitoring resources. The Week 3 AWS resources were cleaned up, and the Week 4 development platform has since been deployed from this repository. The Terraform workflow uses an S3 remote-state bucket; a fresh deployment must bootstrap that bucket and configure GitHub OIDC variables and permissions before applying.
 
 ## Repository layout
 
@@ -109,9 +109,9 @@ Trivy's file-scoped, expiring lab exceptions are documented in `.trivyignore.yam
 - CPU-based HPAs scale Product, Inventory, Orders, Notifications, and Frontend between one and three replicas. Metrics Server supplies resource metrics. VPA adjusts bounded memory requests and limits; it can adjust CPU only for the singleton outbox relay so it does not conflict with CPU-based HPAs.
 - The managed node group is deliberately fixed at one small node for core add-ons and controller availability. Karpenter adds on-demand C/M/R-family nodes as pending Pods require capacity and consolidates underused nodes; the dev NodePool is limited to three nodes, 12 vCPU, and 48 GiB. Karpenter evaluates these limits asynchronously, so a rapid burst can briefly exceed them. This is a bounded dev setup, not a guarantee of zero interruption or a production capacity plan.
 - CloudWatch Observability collects EKS metrics and logs; dashboards and RDS alarms support operations. EKS log retention is set to 14 days.
-- Terraform CI validates configuration and a weekly scheduled plan detects drift without applying changes. Recreate the remote state bucket before using the Terraform workflow.
+- Terraform CI validates configuration and a weekly scheduled plan detects drift without applying changes. Keep the existing remote-state bucket available; bootstrap a new one only when deploying into a fresh account or after intentionally removing the backend.
 - ECR/S3 lifecycle policies limit retained artifacts. An AWS Budget alerts at 80% actual and 100% forecasted spend when `MONITORING_ALERT_EMAIL` is configured; budgets do not stop spend.
 
 ## Cost notes
 
-This design is a lab baseline, not a production HA deployment. RDS Multi-AZ is enabled by default with a standby in another Availability Zone, and 60-second Enhanced Monitoring publishes OS metrics to CloudWatch Logs. Both increase cost; RDS destroy still skips a final snapshot. The single NAT Gateway and baseline EKS node remain availability limitations. The NAT Gateway, EKS control plane/nodes, ALB, RDS, CloudWatch ingestion, and data transfer can all incur costs. A budget is an alert, not a hard cap. Production should enable deletion protection and final snapshots, define RTO/RPO, test restores and failover, and validate per-AZ network resilience. Nothing in this repository update has been applied to AWS.
+This design is a lab baseline, not a production HA deployment. RDS Multi-AZ is enabled by default with a standby in another Availability Zone, and 60-second Enhanced Monitoring publishes OS metrics to CloudWatch Logs. Both increase cost; RDS destroy still skips a final snapshot. The single NAT Gateway and baseline EKS node remain availability limitations. The NAT Gateway, EKS control plane/nodes, ALB, RDS, CloudWatch ingestion, and data transfer can all incur costs. A budget is an alert, not a hard cap. Production should enable deletion protection and final snapshots, define RTO/RPO, test restores and failover, and validate per-AZ network resilience.

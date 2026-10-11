@@ -1,74 +1,99 @@
-# Demo Evidence
+# Week 4 Demo Evidence
 
-Capture evidence as each project phase is completed.
+This page contains evidence from the current Week 4 deployment. Add new screenshots only when they show a specific requirement working in this environment.
 
-## Captured evidence
+## Coffee Store order and notification flow
 
-### SQS queues after cleanup
+The public storefront shows two placed orders with matching notification updates. The SNS email for order `9f7a9c0b` matches the Ethiopia Yirgacheffe order and its $18.50 total. Together, these screenshots demonstrate the customer-visible order, in-app update, and email delivery. They do not by themselves verify each internal EventBridge/SQS hop or DLQ behavior.
 
-At capture time, all four project queues showed zero available and zero in-flight messages. This is a point-in-time health check after the notification DLQ cleanup; it does not document the earlier consumer loop or prove its root cause.
+![Coffee Store recent orders and matching notification updates](demo-evidence/coffee-store-orders-and-notifications.png)
 
-![SQS console showing zero messages in the notification and monitoring queues](demo-evidence/sqs-queues-empty.png)
+![SNS order confirmation email matching the Ethiopia Yirgacheffe order](demo-evidence/coffee-store-sns-order-email.png)
 
-### Terraform infrastructure deployment
+## EKS application deployment
 
-The `dev` Terraform workflow completed successfully. The run summary identifies run #20 and commit `cd3ac2f`; the job steps show successful OIDC authentication, remote-state initialization, planning, and applying.
+The `Deploy Coffee Store to EKS` run #21 completed successfully. Its job steps show the five application images were built and scanned, published to ECR, deployed with Helm, checked for successful rollouts, and smoke-tested through the frontend. This verifies the deployment workflow and a successful post-deployment check; the overview does not show individual Trivy finding totals or current HPA/VPA values.
 
-![Terraform workflow run summary showing success](demo-evidence/terraform-apply-summary.png)
+![Successful Coffee Store to EKS deployment run with Helm rollout verification and frontend smoke test](demo-evidence/week4-coffee-store-deployment-run-21.png)
 
-![Terraform job steps showing successful OIDC, remote state, plan, and apply](demo-evidence/terraform-apply-steps.png)
+## CloudWatch platform dashboard
 
-### Event producer deployment
+The current `guduf-retail-eks-dev-platform` dashboard shows time-series data for EKS node CPU and memory utilization, RDS CPU and database connections, and Coffee Store Pod CPU and memory utilization. This demonstrates that resource metrics are reaching CloudWatch; it does not demonstrate application request latency, error rate, or throughput.
 
-Deploy Event Producer workflow run #2 completed successfully on branch dev at commit fd924ad. The job resolved deployment values from Terraform state, built and pushed the image, deployed the producer, and verified its rollout in EKS.
+![Week 4 CloudWatch dashboard showing EKS node, RDS, and Coffee Store Pod metrics](demo-evidence/week4-cloudwatch-platform-dashboard.png)
 
-![Successful event producer deployment workflow summary](demo-evidence/event-producer-deploy-summary.png)
+## CloudWatch application logs
 
-![Event producer deployment steps showing image build and push and successful EKS rollout](demo-evidence/event-producer-deploy-steps.png)
+A recent `order-service` entry in the EKS application log group shows a timestamp, the `coffee-store` namespace and Pod metadata, and a successful `GET /health` response. This verifies that application container logs are reaching CloudWatch. A health-check entry does not by itself prove order processing or an end-to-end transaction.
 
-### Coffee Store application deployment
+![Week 4 CloudWatch order-service log entry with Kubernetes metadata and health-check response](demo-evidence/week4-cloudwatch-order-service-log.png)
 
-These screenshots show a successful application deployment job, including catalog tests, image scanning/building, pushing five application images, connecting to EKS, applying manifests, and verifying rollouts. They document the application deployment workflow, not a producer-only workflow; the screenshots do not show the repository or run title.
+## Application Load Balancer monitoring
 
-![Successful deployment job steps, including tests and image build and scan](demo-evidence/codex-clipboard-1312601f-48b1-49b0-9470-6c182b3ca1a1.png)
+The Coffee Store ALB monitoring view shows incoming requests and measured target response time. The selected time range has no datapoints for target 5xx or ELB 5xx; this should not be described as proof of zero errors. An ELB 4xx spike appears near the end of the range and needs investigation before claiming the traffic was entirely healthy.
 
-![Successful deployment job steps, including image push and EKS rollout verification](demo-evidence/codex-clipboard-f31761b6-631c-4ee3-8e0f-f81cf9e36e64.png)
+![Week 4 ALB monitoring graphs for requests, target response time, and HTTP errors](demo-evidence/week4-alb-monitoring.png)
 
-### Security scan
+## Order notification dead-letter queue alarm
 
-The GitHub Actions `scan` job completed successfully, with one warning and one notice. The supplied screenshot is cropped and does not show the repository or run title.
+The CloudWatch alarm `guduf-retail-eks-dev-order-notification-dlq-not-empty` is currently OK. It evaluates the maximum visible-message count for the order-notification DLQ every five minutes and enters ALARM when the count is at least one for one datapoint. Its enabled alarm action publishes to the `guduf-retail-eks-dev-monitoring-critical-events` SNS topic. These screenshots verify the alarm configuration, not that a recipient subscription is confirmed or that an incident notification was delivered.
 
-![GitHub Actions security scan job completed successfully](demo-evidence/security-scan-passed.png)
+![Week 4 order-notification DLQ CloudWatch alarm details and threshold](demo-evidence/week4-notification-dlq-alarm-details.png)
 
-## Repository and CI/CD
+![Week 4 order-notification DLQ alarm SNS notification action](demo-evidence/week4-notification-dlq-alarm-action.png)
 
-- Terraform migration PR and successful no-change plan against the existing remote state
-- Successful GitHub Actions OIDC authentication
-- Successful Terraform plan/apply for monitoring resources
-- Successful producer test, image build, and ECR push
+A manually published test message to the monitoring SNS topic arrived by email. This verifies topic-to-email delivery, but it does not verify that the CloudWatch alarm entered ALARM or published a notification.
 
-## Shared AWS foundation
+![Week 4 monitoring SNS test message received by email](demo-evidence/week4-monitoring-sns-test-email.png)
 
-- Existing VPC and EKS cluster reused
-- EKS worker nodes Ready
-- Dedicated IRSA role for the event-producer service account
+A clearly labeled synthetic message was sent directly to the notification DLQ after its available-message count was checked at zero. The DLQ alarm then entered `In alarm` at 2026-10-10 19:42:26 UTC. This demonstrates detection of DLQ backlog; it does not demonstrate automatic redrive from the primary queue, alert-email delivery, or recovery yet.
 
-## Event pipeline
+![Week 4 notification DLQ alarm in ALARM state after synthetic test message](demo-evidence/week4-notification-dlq-alarm-triggered.png)
 
-- Producer Pod sends a sample event to SQS
-- Processor Lambda invocation and CloudWatch logs
-- Event record appears in DynamoDB
-- Raw event object appears in the private S3 archive bucket
-- Critical event generates an SNS email notification
-- Failed event is retained in the SQS dead-letter queue
+The alarm History identified the initial notification failure: CloudWatch Alarms was not authorized to use the SNS topic encryption key. Terraform was then updated to use a dedicated customer-managed KMS key with scoped CloudWatch alarm access. This screenshot records the failure diagnosis before remediation.
 
-## Query API
+![Week 4 CloudWatch alarm History showing SNS encryption-key authorization failure](demo-evidence/week4-notification-alarm-kms-failure.png)
 
-- API Gateway routes for `GET /events` and `GET /events/{eventId}`
-- Successful response for an existing event and expected response for a missing event
+After the Terraform fix was applied, a second labeled synthetic message triggered the alarm at 2026-10-10 20:39:26 UTC. Alarm History shows a successful action to the monitoring SNS topic, and the matching CloudWatch ALARM email was received. This verifies detection and notification end to end for a directly injected DLQ message; it does not demonstrate automatic dead-lettering from the primary queue.
 
-## Operations and cost
+![Week 4 CloudWatch alarm History showing successful SNS action and OK-to-ALARM transition](demo-evidence/week4-notification-alarm-success-history.png)
 
-- CloudWatch alarms for Lambda errors and DLQ message count
-- Evidence of a failed message and recovery procedure
-- Final Terraform plan or cleanup evidence for lab resources
+![Week 4 CloudWatch ALARM notification received by email after DLQ retest](demo-evidence/week4-notification-alarm-email.png)
+
+Alarm History shows the state returned from `In alarm` to `OK` at 2026-10-10 20:48:26 UTC. This verifies alarm recovery; the screenshot does not independently show the DLQ's final message count.
+
+![Week 4 notification DLQ alarm History showing recovery to OK](demo-evidence/week4-notification-alarm-recovered.png)
+
+The SQS console row for `guduf-retail-eks-dev-notification-dlq` shows zero messages available and zero messages in flight after the alarm recovered.
+
+![Week 4 notification DLQ row showing zero message counts after test cleanup](demo-evidence/week4-notification-dlq-zero-counts.png)
+
+## CloudTrail audit logging
+
+The `guduf-retail-eks-dev` multi-Region trail is logging management events to its S3 destination. The console shows log-file validation enabled, SSE-KMS encryption enabled with the customer-managed key, and a recent successful log-file delivery. This verifies trail status and delivery configuration; it does not establish that S3 log access is monitored or that the trail is organization-wide.
+
+![Week 4 CloudTrail trail showing logging enabled, multi-Region scope, log-file validation, SSE-KMS, and recent delivery](demo-evidence/week4-cloudtrail-trail-logging.png)
+
+## Cost Explorer baseline
+
+The project-tagged Cost Explorer export records $9.04 in unblended costs for October 7–10, 2026. Costs appear on October 9 ($3.50) and October 10 ($5.54); the latter may be an incomplete day. Treat this as a short-period baseline, not a monthly estimate or proof of savings. The service breakdown identifies CloudWatch ($2.88), EKS ($2.45), EC2-Other ($1.34), EC2 instances ($1.30), and RDS ($0.90) as the largest categories.
+
+[Cost Explorer service breakdown CSV](demo-evidence/week4-cost-explorer-service-breakdown.csv)
+
+The EC2-Other usage-type export shows NAT Gateway hours ($1.13) as its largest charge, followed by NAT data processing ($0.14), regional data transfer ($0.04), and gp3 EBS storage ($0.03). Investigate these usage types before selecting an optimization; no savings have been measured yet.
+
+[Cost Explorer EC2-Other usage breakdown CSV](demo-evidence/week4-cost-explorer-ec2-other-usage-breakdown.csv)
+
+## CI security scan evidence
+
+The Platform CI scan job for commit `3d3679f` succeeded. Gitleaks reported no leaks in the commit it scanned; its output says one commit was scanned, so this run does not establish that the full Git history is clean. Checkov reported 221 passed, zero failed, and 40 skipped checks for Terraform, Docker, Kubernetes, and workflow configuration. The skipped checks have inline explanations for lab tradeoffs or controls implemented in separate Terraform resources. Trivy filesystem and event-producer image scans completed successfully under the configured High/Critical, ignore-unfixed gates. The captured logs do not include Trivy finding totals. The Node.js and Checkov deprecation warnings are tooling notices, not security findings.
+
+![Week 4 Platform CI security scan job showing successful secret, Checkov, and Trivy steps](demo-evidence/week4-platform-ci-security-scan.png)
+
+![Week 4 event-producer container image build and Trivy scan job showing success](demo-evidence/week4-event-producer-image-scan.png)
+
+## Terraform drift detection
+
+The Terraform workflow screenshot shows the `Detect infrastructure drift (scheduled or manual)` job step completed successfully. The Apply step was skipped in this run, so this is evidence of drift detection only, not a Terraform apply.
+
+![Week 4 Terraform drift-detection workflow completed successfully](demo-evidence/week4-terraform-drift-detection-passed.png)
