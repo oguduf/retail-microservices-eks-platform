@@ -12,6 +12,7 @@ grafana:
   admin:
     existingSecret: grafana-admin
     userKey: admin-user
+    #checkov:skip=CKV_SECRET_6: This is a Kubernetes Secret key name, not a password; deployment injects the value from the GitHub Actions secret.
     passwordKey: admin-password
   ingress:
     enabled: false
