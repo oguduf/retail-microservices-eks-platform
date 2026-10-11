@@ -114,6 +114,7 @@ resource "aws_eks_node_group" "default" {
     aws_iam_role_policy_attachment.node_worker_policy,
     aws_iam_role_policy_attachment.node_ecr_pull_policy,
     aws_iam_role_policy_attachment.node_cni_policy,
-    aws_iam_role_policy_attachment.node_ssm_core
+    aws_iam_role_policy_attachment.node_ssm_core,
+    aws_eks_addon.vpc_cni
   ]
 }

@@ -3,10 +3,6 @@ resource "aws_eks_addon" "vpc_cni" {
   addon_name                  = "vpc-cni"
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "PRESERVE"
-
-  depends_on = [
-    aws_eks_node_group.default
-  ]
 }
 
 resource "aws_eks_addon" "coredns" {
