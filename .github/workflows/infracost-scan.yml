@@ -11,10 +11,15 @@ permissions:
 jobs:
   infracost-scan:
     runs-on: ubuntu-latest
-    container: ghcr.io/infracost/ci:0.1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Infracost CLI
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+          version: "2.x"
 
       - name: Run Infracost Scan
         env:
@@ -22,7 +27,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          infracost-ci scan --path . 2>&1 | tee "$RUNNER_TEMP/infracost-scan.txt"
+          infracost scan infrastructure/environments/dev --json > "$RUNNER_TEMP/infracost-scan.json"
+          infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --summary > "$RUNNER_TEMP/infracost-summary.txt"
           {
             echo "## Infracost cost scan"
             echo
@@ -30,6 +36,6 @@ jobs:
             echo "Commit: \`$GITHUB_SHA\`"
             echo
             echo '```text'
-            cat "$RUNNER_TEMP/infracost-scan.txt"
+            cat "$RUNNER_TEMP/infracost-summary.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
