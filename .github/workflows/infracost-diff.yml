@@ -115,6 +115,8 @@ jobs:
           {
             echo "## Infracost PR cost diff"
             echo
+            echo "This report compares the PR branch with its base branch. It shows the cost change introduced by the PR, not the full monthly cost reported by the push-to-dev scan."
+            echo
             echo "PR #$INFRACOST_PR_NUMBER report, copied from the Infracost PR comment:"
             echo
             if [[ -n "$report" ]]; then
