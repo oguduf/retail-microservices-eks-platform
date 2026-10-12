@@ -40,13 +40,20 @@ jobs:
             2> "$RUNNER_TEMP/infracost-scan.log" || scan_status=$?
 
           summary_status=0
+          diagnostics_status=0
           if [[ -s "$RUNNER_TEMP/infracost-scan.json" ]]; then
             infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --summary \
               > "$RUNNER_TEMP/infracost-summary.txt" \
               2> "$RUNNER_TEMP/infracost-inspect.log" || summary_status=$?
+            infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --diagnostics \
+              > "$RUNNER_TEMP/infracost-diagnostics.txt" \
+              2> "$RUNNER_TEMP/infracost-diagnostics.log" || diagnostics_status=$?
           else
             summary_status=1
+            diagnostics_status=1
             printf 'Infracost did not produce scan JSON.\n' > "$RUNNER_TEMP/infracost-summary.txt"
+            printf 'No diagnostic report is available because scan JSON was not produced.\n' \
+              > "$RUNNER_TEMP/infracost-diagnostics.txt"
           fi
 
           {
@@ -59,7 +66,12 @@ jobs:
             cat "$RUNNER_TEMP/infracost-summary.txt"
             echo '```'
             echo
-            echo "Scan exit code: $scan_status; summary exit code: $summary_status."
+            echo "Scan exit code: $scan_status; summary exit code: $summary_status; diagnostics exit code: $diagnostics_status."
+            echo
+            echo 'Detailed scan diagnostics:'
+            echo '```text'
+            cat "$RUNNER_TEMP/infracost-diagnostics.txt"
+            echo '```'
             if [[ -s "$RUNNER_TEMP/infracost-scan.log" ]]; then
               echo
               echo 'Scan diagnostics:'
@@ -74,9 +86,19 @@ jobs:
               cat "$RUNNER_TEMP/infracost-inspect.log"
               echo '```'
             fi
+            if [[ -s "$RUNNER_TEMP/infracost-diagnostics.log" ]]; then
+              echo
+              echo 'Diagnostics command output:'
+              echo '```text'
+              cat "$RUNNER_TEMP/infracost-diagnostics.log"
+              echo '```'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
           if (( scan_status != 0 )); then
             exit "$scan_status"
           fi
-          exit "$summary_status"
+          if (( summary_status != 0 )); then
+            exit "$summary_status"
+          fi
+          exit "$diagnostics_status"
