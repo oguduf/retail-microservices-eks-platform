@@ -1,0 +1,22 @@
+## Optional internet-facing Grafana ingress. Use only after a matching ACM
+## certificate for grafana.omergroup.click is issued in us-east-2.
+## Grafana's own login remains enabled and the ALB redirects HTTP to HTTPS.
+grafana:
+  grafana.ini:
+    server:
+      domain: grafana.omergroup.click
+      root_url: https://grafana.omergroup.click/
+      enforce_domain: true
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    hosts:
+      - grafana.omergroup.click
+    path: /
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/healthcheck-path: /api/health
+      alb.ingress.kubernetes.io/success-codes: '200'

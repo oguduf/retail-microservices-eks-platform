@@ -101,3 +101,15 @@ The Platform CI scan job for commit `3d3679f` succeeded. Gitleaks reported no le
 The Terraform workflow screenshot shows the `Detect infrastructure drift (scheduled or manual)` job step completed successfully. The Apply step was skipped in this run, so this is evidence of drift detection only, not a Terraform apply.
 
 ![Week 4 Terraform drift-detection workflow completed successfully](demo-evidence/week4-terraform-drift-detection-passed.png)
+
+## Prometheus and Grafana deployment
+
+The manually triggered GitHub Actions workflow successfully installed the pinned `kube-prometheus-stack` release in the EKS `observability` namespace. The EKS console showed Grafana, Prometheus, the Prometheus operator, and kube-state-metrics Pods running. One node-exporter Pod remained Pending.
+
+The scheduler event reported that no node was eligible: one node had reached its Pod capacity, while the other did not satisfy the Pod's node-affinity rules. This is a scheduling constraint, not evidence that Grafana or Prometheus failed. The Pending exporter may limit host-level metrics; it does not establish that all monitoring metrics are unavailable.
+
+This is a development lab deployment. Grafana and Prometheus use internal ClusterIP services, and Prometheus storage is ephemeral. The initial deployment did not create a public Grafana URL. An optional HTTPS ingress can be enabled after ACM and Route 53 setup; see `grafana-access.md`. CloudWatch remains the primary evidence for the project's existing logs, metrics, and alarms.
+
+![EKS observability Pods after the monitoring deployment](demo-evidence/prometheus-grafana-pods.png)
+
+![Scheduler event for the Pending node-exporter Pod](demo-evidence/prometheus-grafana-node-exporter-scheduling-event.png)
