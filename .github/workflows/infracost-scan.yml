@@ -34,8 +34,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          infracost scan infrastructure/environments/dev --json > "$RUNNER_TEMP/infracost-scan.json"
-          infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --summary > "$RUNNER_TEMP/infracost-summary.txt"
+          scan_status=0
+          infracost scan infrastructure/environments/dev --json \
+            > "$RUNNER_TEMP/infracost-scan.json" \
+            2> "$RUNNER_TEMP/infracost-scan.log" || scan_status=$?
+
+          summary_status=0
+          if [[ -s "$RUNNER_TEMP/infracost-scan.json" ]]; then
+            infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --summary \
+              > "$RUNNER_TEMP/infracost-summary.txt" \
+              2> "$RUNNER_TEMP/infracost-inspect.log" || summary_status=$?
+          else
+            summary_status=1
+            printf 'Infracost did not produce scan JSON.\n' > "$RUNNER_TEMP/infracost-summary.txt"
+          fi
+
           {
             echo "## Infracost cost scan"
             echo
@@ -45,4 +58,25 @@ jobs:
             echo '```text'
             cat "$RUNNER_TEMP/infracost-summary.txt"
             echo '```'
+            echo
+            echo "Scan exit code: $scan_status; summary exit code: $summary_status."
+            if [[ -s "$RUNNER_TEMP/infracost-scan.log" ]]; then
+              echo
+              echo 'Scan diagnostics:'
+              echo '```text'
+              cat "$RUNNER_TEMP/infracost-scan.log"
+              echo '```'
+            fi
+            if [[ -s "$RUNNER_TEMP/infracost-inspect.log" ]]; then
+              echo
+              echo 'Summary diagnostics:'
+              echo '```text'
+              cat "$RUNNER_TEMP/infracost-inspect.log"
+              echo '```'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( scan_status != 0 )); then
+            exit "$scan_status"
+          fi
+          exit "$summary_status"
