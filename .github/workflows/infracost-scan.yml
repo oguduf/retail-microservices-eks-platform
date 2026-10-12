@@ -35,7 +35,9 @@ jobs:
         run: |
           set -euo pipefail
           scan_status=0
-          infracost scan infrastructure/environments/dev --json \
+          # Run from the repository root so local modules under infrastructure/modules
+          # remain within the scan boundary. infracost.yml limits the estimate to dev.
+          infracost scan --json \
             > "$RUNNER_TEMP/infracost-scan.json" \
             2> "$RUNNER_TEMP/infracost-scan.log" || scan_status=$?
 

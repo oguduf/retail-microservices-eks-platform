@@ -83,11 +83,19 @@ jobs:
           ref: ${{ needs.pr-details.outputs.base-ref }}
           path: base
 
+      - name: Use the same Infracost project config for both branches
+        if: github.event.action != 'closed'
+        shell: bash
+        run: cp head/infracost.yml base/infracost.yml
+
       - name: Run Infracost Diff
         uses: infracost/actions/diff@v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
-          base-path: base/infrastructure/environments/dev
-          head-path: head/infrastructure/environments/dev
+          # Root paths let Infracost load the root config and keep local modules
+          # within each checkout's scan boundary; infracost.yml selects dev.
+          base-path: base
+          head-path: head
+          project: dev
           pr-number: ${{ needs.pr-details.outputs.pr-number }}
           pr-status: ${{ github.event_name == 'workflow_dispatch' && 'OPEN' || '' }}
