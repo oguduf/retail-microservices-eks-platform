@@ -24,6 +24,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/infracost-extracted"
           tar -xzf "$RUNNER_TEMP/infracost-linux-amd64.tar.gz" -C "$RUNNER_TEMP/infracost-extracted"
           install -m 0755 "$RUNNER_TEMP/infracost-extracted/infracost" "$RUNNER_TEMP/infracost"
+          export PATH="$RUNNER_TEMP:$PATH"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           infracost --version
 
