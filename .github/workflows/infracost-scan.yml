@@ -21,8 +21,9 @@ jobs:
           set -euo pipefail
           curl -fsSL https://github.com/infracost/cli/releases/download/v2.17.0/infracost-linux-amd64.tar.gz \
             -o "$RUNNER_TEMP/infracost-linux-amd64.tar.gz"
-          tar -xzf "$RUNNER_TEMP/infracost-linux-amd64.tar.gz" -C "$RUNNER_TEMP"
-          install -m 0755 "$RUNNER_TEMP/infracost-linux-amd64" "$RUNNER_TEMP/infracost"
+          mkdir -p "$RUNNER_TEMP/infracost-extracted"
+          tar -xzf "$RUNNER_TEMP/infracost-linux-amd64.tar.gz" -C "$RUNNER_TEMP/infracost-extracted"
+          install -m 0755 "$RUNNER_TEMP/infracost-extracted/infracost" "$RUNNER_TEMP/infracost"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           infracost --version
 
