@@ -2,6 +2,15 @@ name: Deploy Prometheus and Grafana
 
 on:
   workflow_dispatch:
+    inputs:
+      grafana_access:
+        description: "Keep Grafana private or expose it through authenticated HTTPS."
+        required: true
+        type: choice
+        options:
+          - private
+          - public-https
+        default: private
 
 permissions:
   contents: read
@@ -13,6 +22,7 @@ concurrency:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  GRAFANA_ACCESS: ${{ inputs.grafana_access }}
 
 jobs:
   verify:
@@ -93,10 +103,15 @@ jobs:
           set -euo pipefail
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo update prometheus-community
+          values_args=()
+          if [[ "$GRAFANA_ACCESS" == "public-https" ]]; then
+            values_args+=(--values helm/prometheus-grafana/values-public-https.yaml)
+          fi
           helm upgrade --install prometheus-grafana prometheus-community/kube-prometheus-stack \
             --namespace observability \
             --version 92.3.0 \
             --values helm/prometheus-grafana/values-dev.yaml \
+            "${values_args[@]}" \
             --wait --timeout 15m
 
       - name: Verify monitoring workloads and services
@@ -105,6 +120,31 @@ jobs:
           set -euo pipefail
           kubectl get pods,svc --namespace observability --output wide
           kubectl get prometheus,servicemonitors --namespace observability
+          kubectl get ingress --namespace observability --output wide
+          if [[ "$GRAFANA_ACCESS" == "public-https" ]]; then
+            ingress_name=""
+            ingress_hostname=""
+            for attempt in {1..60}; do
+              ingress_name="$(kubectl get ingress --namespace observability --output jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+              if [[ -n "$ingress_name" ]]; then
+                ingress_hostname="$(kubectl get ingress "$ingress_name" --namespace observability --output jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+              fi
+              if [[ -n "$ingress_hostname" ]]; then
+                break
+              fi
+              sleep 10
+            done
+            if [[ -z "$ingress_hostname" ]]; then
+              echo "::error::Grafana Ingress has no ALB hostname yet. Check its Kubernetes events and confirm the ACM certificate is issued in $AWS_REGION."
+              exit 1
+            fi
+            {
+              echo "## Grafana HTTPS endpoint setup"
+              printf 'The ALB hostname is: `%s`.\n' "$ingress_hostname"
+              printf 'In Route 53, create an A record named grafana.omergroup.click, enable Alias, and route it to this Application Load Balancer in %s.\n' "$AWS_REGION"
+              echo "After DNS propagates, open https://grafana.omergroup.click and sign in as admin using the GRAFANA_ADMIN_PASSWORD Actions secret."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Diagnose deployment failure
         if: ${{ failure() }}

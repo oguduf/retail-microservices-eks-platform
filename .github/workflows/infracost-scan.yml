@@ -1,0 +1,106 @@
+name: Infracost Scan
+# Managed by infracost ci setup v1 — re-run `infracost ci setup --pipeline` to update.
+
+on:
+  push:
+    branches: ["dev"]
+
+permissions:
+  contents: read
+
+jobs:
+  infracost-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Infracost CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/infracost/cli/releases/download/v2.17.0/infracost-linux-amd64.tar.gz \
+            -o "$RUNNER_TEMP/infracost-linux-amd64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/infracost-extracted"
+          tar -xzf "$RUNNER_TEMP/infracost-linux-amd64.tar.gz" -C "$RUNNER_TEMP/infracost-extracted"
+          install -m 0755 "$RUNNER_TEMP/infracost-extracted/infracost" "$RUNNER_TEMP/infracost"
+          export PATH="$RUNNER_TEMP:$PATH"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          infracost --version
+
+      - name: Run Infracost Scan
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scan_status=0
+          # Run from the repository root so local modules under infrastructure/modules
+          # remain within the scan boundary. infracost.yml limits the estimate to dev.
+          infracost scan --json \
+            > "$RUNNER_TEMP/infracost-scan.json" \
+            2> "$RUNNER_TEMP/infracost-scan.log" || scan_status=$?
+
+          summary_status=0
+          diagnostics_status=0
+          if [[ -s "$RUNNER_TEMP/infracost-scan.json" ]]; then
+            infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --summary \
+              > "$RUNNER_TEMP/infracost-summary.txt" \
+              2> "$RUNNER_TEMP/infracost-inspect.log" || summary_status=$?
+            infracost inspect --file "$RUNNER_TEMP/infracost-scan.json" --diagnostics \
+              > "$RUNNER_TEMP/infracost-diagnostics.txt" \
+              2> "$RUNNER_TEMP/infracost-diagnostics.log" || diagnostics_status=$?
+          else
+            summary_status=1
+            diagnostics_status=1
+            printf 'Infracost did not produce scan JSON.\n' > "$RUNNER_TEMP/infracost-summary.txt"
+            printf 'No diagnostic report is available because scan JSON was not produced.\n' \
+              > "$RUNNER_TEMP/infracost-diagnostics.txt"
+          fi
+
+          {
+            echo "## Infracost cost scan"
+            echo
+            echo "Branch: \`$GITHUB_REF_NAME\`  "
+            echo "Commit: \`$GITHUB_SHA\`"
+            echo
+            echo '```text'
+            cat "$RUNNER_TEMP/infracost-summary.txt"
+            echo '```'
+            echo
+            echo "Scan exit code: $scan_status; summary exit code: $summary_status; diagnostics exit code: $diagnostics_status."
+            echo
+            echo 'Detailed scan diagnostics:'
+            echo '```text'
+            cat "$RUNNER_TEMP/infracost-diagnostics.txt"
+            echo '```'
+            if [[ -s "$RUNNER_TEMP/infracost-scan.log" ]]; then
+              echo
+              echo 'Scan diagnostics:'
+              echo '```text'
+              cat "$RUNNER_TEMP/infracost-scan.log"
+              echo '```'
+            fi
+            if [[ -s "$RUNNER_TEMP/infracost-inspect.log" ]]; then
+              echo
+              echo 'Summary diagnostics:'
+              echo '```text'
+              cat "$RUNNER_TEMP/infracost-inspect.log"
+              echo '```'
+            fi
+            if [[ -s "$RUNNER_TEMP/infracost-diagnostics.log" ]]; then
+              echo
+              echo 'Diagnostics command output:'
+              echo '```text'
+              cat "$RUNNER_TEMP/infracost-diagnostics.log"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( scan_status != 0 )); then
+            exit "$scan_status"
+          fi
+          if (( summary_status != 0 )); then
+            exit "$summary_status"
+          fi
+          exit "$diagnostics_status"

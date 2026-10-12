@@ -82,6 +82,12 @@ The refreshed, project-specific Cost Explorer export records $17.141 in unblende
 
 The usage-type screenshots show EKS cluster-hours, CloudWatch observation/log usage, and EC2-Other charges led by NAT Gateway hours. These are candidate cost drivers to evaluate; no optimization savings have been measured.
 
+![Cost Explorer graph for EKS cluster hours](demo-evidence/week4-cost-explorer-eks-cluster-hours.png)
+
+![Cost Explorer graph for CloudWatch usage](demo-evidence/week4-cost-explorer-cloudwatch-usage-breakdown.png)
+
+![Cost Explorer graph for EC2-Other usage, including NAT Gateway hours](demo-evidence/week4-cost-explorer-ec2-other-usage-breakdown.png)
+
 [Cost Explorer service breakdown CSV](demo-evidence/week4-cost-explorer-service-breakdown.csv)
 
 The EC2-Other usage-type export shows NAT Gateway hours ($1.13) as its largest charge, followed by NAT data processing ($0.14), regional data transfer ($0.04), and gp3 EBS storage ($0.03). Investigate these usage types before selecting an optimization; no savings have been measured yet.
@@ -101,3 +107,23 @@ The Platform CI scan job for commit `3d3679f` succeeded. Gitleaks reported no le
 The Terraform workflow screenshot shows the `Detect infrastructure drift (scheduled or manual)` job step completed successfully. The Apply step was skipped in this run, so this is evidence of drift detection only, not a Terraform apply.
 
 ![Week 4 Terraform drift-detection workflow completed successfully](demo-evidence/week4-terraform-drift-detection-passed.png)
+
+## Prometheus and Grafana deployment
+
+The manually triggered GitHub Actions workflow successfully installed the pinned `kube-prometheus-stack` release in the EKS `observability` namespace. The EKS console showed Grafana, Prometheus, the Prometheus operator, and kube-state-metrics Pods running. One node-exporter Pod remained Pending.
+
+The scheduler event reported that no node was eligible: one node had reached its Pod capacity, while the other did not satisfy the Pod's node-affinity rules. This is a scheduling constraint, not evidence that Grafana or Prometheus failed. The Pending exporter may limit host-level metrics; it does not establish that all monitoring metrics are unavailable.
+
+This is a development lab deployment. Grafana and Prometheus use internal ClusterIP services, and Prometheus storage is ephemeral. The initial deployment did not create a public Grafana URL. An optional HTTPS ingress can be enabled after ACM and Route 53 setup; see `grafana-access.md`. CloudWatch remains the primary evidence for the project's existing logs, metrics, and alarms.
+
+![EKS observability Pods after the monitoring deployment](demo-evidence/prometheus-grafana-pods.png)
+
+![Scheduler event for the Pending node-exporter Pod](demo-evidence/prometheus-grafana-node-exporter-scheduling-event.png)
+
+## Grafana dashboard and Prometheus query
+
+The Grafana Kubernetes dashboard displayed memory time series by namespace. In Grafana Explore, the Prometheus query `rate(container_cpu_usage_seconds_total[5m])` returned plotted container CPU rate series.
+
+![Grafana Kubernetes dashboard with namespace memory metrics](demo-evidence/prometheus-grafana-dashboard-metrics.png)
+
+![Prometheus container CPU rate query plotted in Grafana Explore](demo-evidence/prometheus-container-cpu-rate-query.png)

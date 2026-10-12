@@ -5,7 +5,7 @@ alertmanager:
   enabled: false # CloudWatch alarms already provide the lab alerting path.
 
 defaultRules:
-  create: false # Avoid duplicate alerting rules while retaining default dashboards.
+  create: true # Dashboards depend on recording rules; Alertmanager notifications remain disabled above.
 
 grafana:
   enabled: true

@@ -1,0 +1,101 @@
+name: Infracost Diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: Pull request number to scan
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pr-details:
+    runs-on: ubuntu-latest
+    outputs:
+      base-ref: ${{ steps.resolve.outputs.base-ref }}
+      head-ref: ${{ steps.resolve.outputs.head-ref }}
+      head-repository: ${{ steps.resolve.outputs.head-repository }}
+      pr-number: ${{ steps.resolve.outputs.pr-number }}
+    steps:
+      - name: Resolve pull request details
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          EVENT_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$INPUT_PR_NUMBER" ]]; then
+            PR_NUMBER="$INPUT_PR_NUMBER"
+            PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --json baseRefName,headRefName,headRepository)
+            BASE_REF=$(jq -r '.baseRefName' <<< "$PR_JSON")
+            HEAD_REF=$(jq -r '.headRefName' <<< "$PR_JSON")
+            HEAD_REPOSITORY=$(jq -r '.headRepository.nameWithOwner // empty' <<< "$PR_JSON")
+          else
+            PR_NUMBER="$EVENT_PR_NUMBER"
+            BASE_REF="$EVENT_BASE_REF"
+            HEAD_REF="$EVENT_HEAD_REF"
+            HEAD_REPOSITORY="$EVENT_HEAD_REPOSITORY"
+          fi
+          if [[ -z "$HEAD_REPOSITORY" ]]; then
+            HEAD_REPOSITORY="$GITHUB_REPOSITORY"
+          fi
+          {
+            echo "base-ref=$BASE_REF"
+            echo "head-ref=$HEAD_REF"
+            echo "head-repository=$HEAD_REPOSITORY"
+            echo "pr-number=$PR_NUMBER"
+          } >> "$GITHUB_OUTPUT"
+
+  infracost-diff:
+    needs: pr-details
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request branch
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.pr-details.outputs.head-repository }}
+          ref: ${{ needs.pr-details.outputs.head-ref }}
+          path: head
+
+      - name: Checkout pull request merge ref
+        if: github.event_name == 'pull_request' && github.event.action != 'closed'
+        uses: actions/checkout@v4
+        with:
+          path: head
+
+      - name: Checkout base branch
+        if: github.event.action != 'closed'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.pr-details.outputs.base-ref }}
+          path: base
+
+      - name: Use the same Infracost project config for both branches
+        if: github.event.action != 'closed'
+        shell: bash
+        run: cp head/infracost.yml base/infracost.yml
+
+      - name: Run Infracost Diff
+        uses: infracost/actions/diff@v4
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+          # Root paths let Infracost load the root config and keep local modules
+          # within each checkout's scan boundary; infracost.yml selects dev.
+          base-path: base
+          head-path: head
+          project: dev
+          pr-number: ${{ needs.pr-details.outputs.pr-number }}
+          pr-status: ${{ github.event_name == 'workflow_dispatch' && 'OPEN' || '' }}

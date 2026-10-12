@@ -53,6 +53,12 @@ jobs:
             --version 92.3.0 \
             --values helm/prometheus-grafana/values-dev.yaml \
             --include-crds > /tmp/prometheus-grafana-rendered.yaml
+          helm template prometheus-grafana prometheus-community/kube-prometheus-stack \
+            --namespace observability \
+            --version 92.3.0 \
+            --values helm/prometheus-grafana/values-dev.yaml \
+            --values helm/prometheus-grafana/values-public-https.yaml \
+            --include-crds > /tmp/prometheus-grafana-public-rendered.yaml
 
   scan:
     runs-on: ubuntu-latest
