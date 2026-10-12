@@ -15,11 +15,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Infracost CLI
-        uses: infracost/actions/setup@v3
-        with:
-          api-key: ${{ secrets.INFRACOST_API_KEY }}
-          version: "2.x"
+      - name: Install Infracost CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/infracost/cli/releases/download/v2.17.0/infracost-linux-amd64.tar.gz \
+            -o "$RUNNER_TEMP/infracost-linux-amd64.tar.gz"
+          tar -xzf "$RUNNER_TEMP/infracost-linux-amd64.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/infracost-linux-amd64" "$RUNNER_TEMP/infracost"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          infracost --version
 
       - name: Run Infracost Scan
         env:
