@@ -99,3 +99,27 @@ jobs:
           project: dev
           pr-number: ${{ needs.pr-details.outputs.pr-number }}
           pr-status: ${{ github.event_name == 'workflow_dispatch' && 'OPEN' || '' }}
+
+      - name: Add Infracost report to Actions summary
+        if: github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INFRACOST_PR_NUMBER: ${{ needs.pr-details.outputs.pr-number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          report=$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$INFRACOST_PR_NUMBER/comments?per_page=100" \
+            | jq -r '[.[][] | select(.user.login == "github-actions[bot]" and (.body | contains("Infracost report")))] | sort_by(.updated_at) | last | .body // empty')
+
+          {
+            echo "## Infracost PR cost diff"
+            echo
+            echo "PR #$INFRACOST_PR_NUMBER report, copied from the Infracost PR comment:"
+            echo
+            if [[ -n "$report" ]]; then
+              printf '%s\n' "$report"
+            else
+              echo "No Infracost report comment was found. Check the PR Conversation tab and the diff action logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
