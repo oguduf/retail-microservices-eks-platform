@@ -88,11 +88,30 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Decode Base64 safely into a binary file.
+          COOKIE_FILE=$(mktemp)
+          trap 'rm -f "$COOKIE_FILE"' EXIT
+
+          printf '%s' "$COOKIE_SECRET" \
+            | base64 --decode > "$COOKIE_FILE"
+
+          # Confirm the decoded secret is exactly 32 bytes.
+          SECRET_LENGTH=$(wc -c < "$COOKIE_FILE")
+          SECRET_LENGTH=$(echo "$SECRET_LENGTH" | tr -d ' ')
+
+          if [[ "$SECRET_LENGTH" -ne 32 ]]; then
+            echo "::error::Cookie secret must decode to 32 bytes."
+            exit 1
+          fi
+
+          echo "Cookie secret validated successfully."
+
+          # Create/update the Kubernetes Secret.
           kubectl create secret generic oauth2-proxy-secrets \
             --namespace opencost \
             --from-literal=client-id="$CLIENT_ID" \
             --from-literal=client-secret="$CLIENT_SECRET" \
-            --from-literal=cookie-secret="$COOKIE_SECRET" \
+            --from-file=cookie-secret="$COOKIE_FILE" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Add OAuth2 Proxy Helm repository
@@ -125,7 +144,7 @@ jobs:
             --set extraArgs.cookie-samesite=lax \
             --set service.type=ClusterIP \
             --wait \
-            --timeout 2m
+            --timeout 5m
 
       - name: Diagnose OAuth2 Proxy deployment
         if: failure()
@@ -152,6 +171,13 @@ jobs:
             --all-containers=true \
             --tail=80 \
             --prefix=true || true
+
+          echo "===== PREVIOUS CRASH LOGS ====="
+          kubectl logs \
+            -n opencost \
+            deployment/oauth2-proxy \
+            --previous \
+            --tail=100 || true
 
           echo "===== RECENT KUBERNETES EVENTS ====="
           kubectl get events \
