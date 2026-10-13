@@ -60,6 +60,8 @@ prometheusOperator:
       memory: 384Mi
 
 kube-state-metrics:
+  metricLabelsAllowlist:
+    - nodes=[node.kubernetes.io/instance-type,topology.kubernetes.io/region,topology.kubernetes.io/zone,failure-domain.beta.kubernetes.io/region,failure-domain.beta.kubernetes.io/zone,kubernetes.io/arch,kubernetes.io/os]
   resources:
     requests:
       cpu: 25m
