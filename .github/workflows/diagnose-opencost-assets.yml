@@ -53,6 +53,9 @@ jobs:
           echo "===== PROMETHEUS PODS ====="
           kubectl get pods -n observability
 
+          echo "===== NODE EXPORTER SERVICEMONITOR ====="
+          kubectl get servicemonitors -n observability -o json \
+            | jq '.items[] | select(.metadata.name | contains("node-exporter")) | {name: .metadata.name, endpoints: .spec.endpoints}'
           echo "===== OPEN COST SERVICE ====="
           kubectl get svc opencost -n opencost
 
