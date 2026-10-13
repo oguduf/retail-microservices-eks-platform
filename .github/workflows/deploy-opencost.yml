@@ -15,6 +15,7 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       id-token: write
@@ -36,7 +37,10 @@ jobs:
           version: v3.18.4
 
       - name: Connect to Amazon EKS
+        shell: bash
         run: |
+          set -euo pipefail
+
           aws eks update-kubeconfig \
             --name "$EKS_CLUSTER_NAME" \
             --region "$AWS_REGION"
@@ -47,6 +51,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "===== ALL KUBERNETES SERVICES ====="
           kubectl get svc -A
 
           mapfile -t matches < <(
@@ -57,18 +62,32 @@ jobs:
                   .metadata.name == "prometheus-server"
                   or (.metadata.name | endswith("-prometheus"))
                 )
-              | select(any(.spec.ports[]?; .port == 80 or .port == 9090))
-              | [.metadata.namespace,
-                 .metadata.name,
-                 (.spec.ports |
-                   map(select(.port == 80 or .port == 9090)) |
-                   first | .port)]
+              | select(
+                  any(
+                    .spec.ports[]?;
+                    .port == 80 or .port == 9090
+                  )
+                )
+              | [
+                  .metadata.namespace,
+                  .metadata.name,
+                  (
+                    .spec.ports |
+                    map(
+                      select(
+                        .port == 80 or .port == 9090
+                      )
+                    ) |
+                    first |
+                    .port
+                  )
+                ]
               | @tsv
             '
           )
 
           if [[ ${#matches[@]} -ne 1 ]]; then
-            echo "::error::Expected exactly one recognizable Prometheus service. Found ${#matches[@]}. Configure the endpoint before deploying."
+            echo "::error::Expected exactly one recognizable Prometheus service. Found ${#matches[@]}."
             exit 1
           fi
 
@@ -78,6 +97,10 @@ jobs:
           echo "service=$svc" >> "$GITHUB_OUTPUT"
           echo "port=$port" >> "$GITHUB_OUTPUT"
 
+          echo "Prometheus namespace: $ns"
+          echo "Prometheus service: $svc"
+          echo "Prometheus port: $port"
+
       - name: Install OpenCost
         shell: bash
         run: |
@@ -85,6 +108,7 @@ jobs:
 
           helm repo add opencost \
             https://opencost.github.io/opencost-helm-chart
+
           helm repo update
 
           helm upgrade --install opencost opencost/opencost \
@@ -98,10 +122,115 @@ jobs:
             --set opencost.prometheus.internal.port="${{ steps.prometheus.outputs.port }}"
 
       - name: Verify OpenCost
+        shell: bash
         run: |
+          set -euo pipefail
+
+          echo "===== OPEN COST PODS ====="
           kubectl get pods -n opencost
+
+          echo "===== OPEN COST SERVICES ====="
           kubectl get svc -n opencost
+
+          echo "===== OPEN COST ROLLOUT ====="
           kubectl rollout status \
             deployment/opencost \
             -n opencost \
             --timeout=5m
+
+      - name: Diagnose OpenCost and Prometheus
+        shell: bash
+        env:
+          PROM_NAMESPACE: ${{ steps.prometheus.outputs.namespace }}
+          PROM_SERVICE: ${{ steps.prometheus.outputs.service }}
+          PROM_PORT: ${{ steps.prometheus.outputs.port }}
+        run: |
+          set -euo pipefail
+
+          echo "===== PROMETHEUS CONFIGURATION ====="
+
+          kubectl get deployment opencost \
+            -n opencost \
+            -o json | jq -r '
+              .spec.template.spec.containers[]
+              | .name as $container
+              | .env[]?
+              | select(
+                  .name |
+                  test("PROMETHEUS|CLUSTER_ID")
+                )
+              | "\($container): \(.name)=\(.value // "valueFrom")"
+            '
+
+          echo "===== OPEN COST SERVICES ====="
+          kubectl get svc -n opencost
+
+          echo "===== OPEN COST API HEALTH ====="
+
+          kubectl run opencost-api-check \
+            -n opencost \
+            --image=curlimages/curl:8.12.1 \
+            --restart=Never \
+            --rm -i \
+            --pod-running-timeout=90s \
+            --command -- \
+            curl -sS -i --max-time 20 \
+            http://opencost.opencost.svc.cluster.local:9003/healthz
+
+          echo "===== OPEN COST ALLOCATION API ====="
+
+          kubectl run opencost-allocation-check \
+            -n opencost \
+            --image=curlimages/curl:8.12.1 \
+            --restart=Never \
+            --rm -i \
+            --pod-running-timeout=90s \
+            --command -- \
+            curl -sS --max-time 30 \
+            "http://opencost.opencost.svc.cluster.local:9003/allocation/compute?window=1h"
+
+          echo "===== PROMETHEUS API HEALTH ====="
+
+          kubectl run opencost-prometheus-check \
+            -n opencost \
+            --image=curlimages/curl:8.12.1 \
+            --restart=Never \
+            --rm -i \
+            --pod-running-timeout=90s \
+            --env="PROM_NAMESPACE=$PROM_NAMESPACE" \
+            --env="PROM_SERVICE=$PROM_SERVICE" \
+            --env="PROM_PORT=$PROM_PORT" \
+            --command -- \
+            sh -c '
+              curl -sS --max-time 20 \
+                "http://${PROM_SERVICE}.${PROM_NAMESPACE}.svc.cluster.local:${PROM_PORT}/api/v1/query?query=up"
+            '
+
+          echo "===== OPEN COST LOGS ====="
+
+          kubectl logs deployment/opencost \
+            -n opencost \
+            -c opencost \
+            --tail=80
+
+      - name: Show diagnostics if workflow fails
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== OPEN COST PODS ====="
+          kubectl get pods -n opencost -o wide || true
+
+          echo "===== OPEN COST DEPLOYMENT ====="
+          kubectl describe deployment opencost \
+            -n opencost || true
+
+          echo "===== OPEN COST LOGS ====="
+          kubectl logs deployment/opencost \
+            -n opencost \
+            -c opencost \
+            --tail=100 || true
+
+          echo "===== RECENT EVENTS ====="
+          kubectl get events \
+            -n opencost \
+            --sort-by=.lastTimestamp | tail -40 || true
