@@ -125,7 +125,38 @@ jobs:
             --set extraArgs.cookie-samesite=lax \
             --set service.type=ClusterIP \
             --wait \
-            --timeout 5m
+            --timeout 2m
+
+      - name: Diagnose OAuth2 Proxy deployment
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== HELM STATUS ====="
+          helm status oauth2-proxy -n opencost || true
+
+          echo "===== POD STATUS ====="
+          kubectl get pods -n opencost -o wide || true
+
+          echo "===== DEPLOYMENT STATUS ====="
+          kubectl get deployments -n opencost || true
+
+          echo "===== OAUTH2 PROXY POD DETAILS ====="
+          kubectl describe pods \
+            -n opencost \
+            -l app.kubernetes.io/instance=oauth2-proxy || true
+
+          echo "===== OAUTH2 PROXY LOGS ====="
+          kubectl logs \
+            -n opencost \
+            -l app.kubernetes.io/instance=oauth2-proxy \
+            --all-containers=true \
+            --tail=80 \
+            --prefix=true || true
+
+          echo "===== RECENT KUBERNETES EVENTS ====="
+          kubectl get events \
+            -n opencost \
+            --sort-by=.lastTimestamp | tail -40 || true
 
       - name: Verify OAuth2 Proxy deployment
         shell: bash
