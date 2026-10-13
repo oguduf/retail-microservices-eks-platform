@@ -1,0 +1,174 @@
+
+name: Diagnose OpenCost Assets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Connect to EKS
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION"
+
+      - name: Inspect cluster services and pods
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== EKS NODES ====="
+          kubectl get nodes -o wide
+
+          echo "===== OPEN COST PODS ====="
+          kubectl get pods -n opencost -o wide
+
+          echo "===== PROMETHEUS PODS ====="
+          kubectl get pods -n observability
+
+          echo "===== OPEN COST SERVICE ====="
+          kubectl get svc opencost -n opencost
+
+      - name: Check Prometheus asset metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl port-forward \
+            -n observability \
+            svc/prometheus-grafana-kube-pr-prometheus \
+            19090:9090 \
+            > /tmp/prometheus-forward.log 2>&1 &
+
+          PF_PID=$!
+          trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+
+          for i in {1..30}; do
+            if curl -fsS \
+              http://127.0.0.1:19090/-/ready \
+              >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          for metric in \
+            kube_node_info \
+            kube_node_status_capacity \
+            kube_node_status_allocatable \
+            node_cpu_seconds_total \
+            node_memory_MemTotal_bytes \
+            kube_persistentvolume_info \
+            kubecost_node_is_spot
+          do
+            echo "===== METRIC: $metric ====="
+
+            curl -fsSG \
+              --data-urlencode "query=count($metric)" \
+              http://127.0.0.1:19090/api/v1/query \
+              | jq -c '.data.result'
+          done
+
+      - name: Check OpenCost internal Assets API
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl port-forward \
+            -n opencost \
+            svc/opencost \
+            19003:9003 \
+            > /tmp/opencost-forward.log 2>&1 &
+
+          PF_PID=$!
+          trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+
+          for i in {1..30}; do
+            if curl -fsS \
+              http://127.0.0.1:19003/healthz \
+              >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          for window in 1h 1d 7d; do
+            echo "===== ASSETS WINDOW: $window ====="
+
+            curl -fsSG \
+              --data-urlencode "window=$window" \
+              http://127.0.0.1:19003/assets \
+              | jq -c '{
+                  code: .code,
+                  dataType: (.data | type),
+                  assetCount: (
+                    if (.data | type) == "object"
+                    then (.data | length)
+                    else null
+                    end
+                  ),
+                  error: .message
+                }'
+          done
+
+      - name: Inspect OpenCost logs
+        if: always()
+        shell: bash
+        run: |
+          echo "===== OPEN COST LOGS ====="
+
+          kubectl logs deployment/opencost \
+            -n opencost \
+            --tail=250 \
+            --timestamps=true || true
+
+      - name: Inspect OpenCost configuration
+        if: always()
+        shell: bash
+        run: |
+          echo "===== OPEN COST ENVIRONMENT ====="
+
+          kubectl get deployment opencost \
+            -n opencost \
+            -o json \
+            | jq -r '
+              .spec.template.spec.containers[]
+              | .env[]?
+              | select(
+                  .name == "CLUSTER_ID"
+                  or .name == "PROMETHEUS_SERVER_ENDPOINT"
+                  or .name == "CLOUD_PROVIDER_API_KEY"
+                )
+              | if .value then
+                  "\(.name)=\(.value)"
+                else
+                  "\(.name)=<valueFrom>"
+                end
+            '

@@ -1,0 +1,155 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opencost-router-config
+  namespace: opencost
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      server_name _;
+
+      # API requests using the /model/ prefix
+      # Strip /model/ before forwarding to port 9003
+      location /model/ {
+        proxy_pass http://opencost.opencost.svc.cluster.local:9003/;
+      }
+
+      # Direct allocation API
+      location /allocation/ {
+        proxy_pass http://opencost.opencost.svc.cluster.local:9003;
+      }
+
+      # API health check
+      location = /healthz {
+        proxy_pass http://opencost.opencost.svc.cluster.local:9003;
+      }
+
+      # OpenCost web dashboard
+      location / {
+        proxy_pass http://opencost.opencost.svc.cluster.local:9090;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opencost-router
+  namespace: opencost
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  selector:
+    matchLabels:
+      app: opencost-router
+
+  template:
+    metadata:
+      labels:
+        app: opencost-router
+
+    spec:
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop:
+                - ALL
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+
+            - name: nginx-run
+              mountPath: /var/run
+
+            - name: nginx-tmp
+              mountPath: /tmp
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: opencost-router-config
+
+        - name: nginx-cache
+          emptyDir: {}
+
+        - name: nginx-run
+          emptyDir: {}
+
+        - name: nginx-tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opencost-router
+  namespace: opencost
+spec:
+  type: ClusterIP
+  selector:
+    app: opencost-router
+
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
