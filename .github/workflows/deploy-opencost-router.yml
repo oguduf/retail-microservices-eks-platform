@@ -49,8 +49,7 @@ jobs:
           set -euo pipefail
 
           kubectl apply \
-            --dry-run=client \
-            --validate=false \
+            --dry-run=server \
             -f k8s/opencost/opencost-router.yaml
 
       # Step 5: Deploy OpenCost router
