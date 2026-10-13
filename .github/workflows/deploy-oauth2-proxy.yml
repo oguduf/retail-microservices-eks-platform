@@ -53,6 +53,25 @@ jobs:
           kubectl get namespace opencost
           kubectl get services -n opencost
 
+      - name: Inspect OpenCost service ports
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== OPEN COST SERVICES ====="
+          kubectl get svc -n opencost
+
+          echo "===== OPEN COST SERVICE DETAILS ====="
+          kubectl describe svc opencost -n opencost
+
+          echo "===== OPEN COST PODS ====="
+          kubectl get pods -n opencost
+
+          echo "===== OPEN COST ENDPOINTS ====="
+          kubectl get endpointslice \
+            -n opencost \
+            -l kubernetes.io/service-name=opencost
+
       - name: Validate OAuth credentials
         shell: bash
         env:
@@ -78,12 +97,7 @@ jobs:
           fi
 
           if [[ ! "$COOKIE_SECRET" =~ ^[0-9a-f]{32}$ ]]; then
-            echo "::error::Cookie secret must contain ASCII characters."
-            exit 1
-          fi
-
-          if [[ "${#COOKIE_SECRET}" -ne 32 ]]; then
-            echo "::error::Cookie secret must be exactly 32 characters."
+            echo "::error::Cookie secret must be 32 lowercase hexadecimal characters."
             exit 1
           fi
 
@@ -165,18 +179,12 @@ jobs:
           echo "===== DEPLOYMENT STATUS ====="
           kubectl get deployments -n opencost || true
 
-          echo "===== OAUTH2 PROXY POD DETAILS ====="
-          kubectl describe pods \
-            -n opencost \
-            -l app.kubernetes.io/instance=oauth2-proxy || true
-
           echo "===== OAUTH2 PROXY LOGS ====="
           kubectl logs \
             -n opencost \
-            -l app.kubernetes.io/instance=oauth2-proxy \
+            deployment/oauth2-proxy \
             -c oauth2-proxy \
-            --tail=80 \
-            --prefix=true || true
+            --tail=80 || true
 
           echo "===== PREVIOUS CRASH LOGS ====="
           kubectl logs \
@@ -196,13 +204,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Checking OAuth2 Proxy pods..."
+          echo "===== OAUTH2 PROXY PODS ====="
           kubectl get pods -n opencost
 
-          echo "Checking services..."
+          echo "===== SERVICES ====="
           kubectl get svc -n opencost
 
-          echo "Checking deployment rollout..."
+          echo "===== DEPLOYMENT ROLLOUT ====="
           kubectl rollout status \
             deployment/oauth2-proxy \
             --namespace opencost \
