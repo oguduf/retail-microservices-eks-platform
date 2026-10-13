@@ -15,6 +15,7 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       id-token: write
@@ -23,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials through OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -35,13 +36,50 @@ jobs:
         with:
           version: v3.18.4
 
-      - name: Connect to EKS
+      - name: Connect to Amazon EKS
+        shell: bash
         run: |
+          set -euo pipefail
+
           aws eks update-kubeconfig \
             --name "$EKS_CLUSTER_NAME" \
             --region "$AWS_REGION"
 
-      - name: Create OAuth2 Proxy secret
+      - name: Verify OpenCost namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl get namespace opencost
+          kubectl get services -n opencost
+
+      - name: Validate OAuth credentials
+        shell: bash
+        env:
+          CLIENT_ID: ${{ secrets.OPEN_COST_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.OPEN_COST_CLIENT_SECRET }}
+          COOKIE_SECRET: ${{ secrets.OPEN_COST_COOKIE_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CLIENT_ID" ]]; then
+            echo "::error::Missing OPEN_COST_CLIENT_ID"
+            exit 1
+          fi
+
+          if [[ -z "$CLIENT_SECRET" ]]; then
+            echo "::error::Missing OPEN_COST_CLIENT_SECRET"
+            exit 1
+          fi
+
+          if [[ -z "$COOKIE_SECRET" ]]; then
+            echo "::error::Missing OPEN_COST_COOKIE_SECRET"
+            exit 1
+          fi
+
+          echo "OAuth credentials are configured."
+
+      - name: Create OAuth2 Proxy Kubernetes Secret
         shell: bash
         env:
           CLIENT_ID: ${{ secrets.OPEN_COST_CLIENT_ID }}
@@ -58,9 +96,13 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Add OAuth2 Proxy Helm repository
+        shell: bash
         run: |
+          set -euo pipefail
+
           helm repo add oauth2-proxy \
             https://oauth2-proxy.github.io/manifests
+
           helm repo update
 
       - name: Deploy OAuth2 Proxy
@@ -72,15 +114,12 @@ jobs:
             oauth2-proxy/oauth2-proxy \
             --namespace opencost \
             --set config.existingSecret=oauth2-proxy-secrets \
-            --set config.clientID="" \
-            --set config.clientSecret="" \
-            --set config.cookieSecret="" \
             --set extraArgs.provider=github \
             --set extraArgs.reverse-proxy=true \
             --set extraArgs.email-domain="*" \
             --set extraArgs.github-user=oguduf \
-            --set extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9003" \
-            --set extraArgs.redirect-url="https://opencost.omergroup.click/oauth2/callback" \
+            --set-string extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9003" \
+            --set-string extraArgs.redirect-url="https://opencost.omergroup.click/oauth2/callback" \
             --set extraArgs.cookie-secure=true \
             --set extraArgs.cookie-httponly=true \
             --set extraArgs.cookie-samesite=lax \
@@ -88,11 +127,21 @@ jobs:
             --wait \
             --timeout 5m
 
-      - name: Verify OAuth2 Proxy
+      - name: Verify OAuth2 Proxy deployment
+        shell: bash
         run: |
+          set -euo pipefail
+
+          echo "Checking OAuth2 Proxy pods..."
           kubectl get pods -n opencost
+
+          echo "Checking services..."
           kubectl get svc -n opencost
+
+          echo "Checking deployment rollout..."
           kubectl rollout status \
             deployment/oauth2-proxy \
-            -n opencost \
+            --namespace opencost \
             --timeout=5m
+
+          echo "OAuth2 Proxy deployment successful."
