@@ -1,0 +1,77 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opencost-router-config
+  namespace: opencost
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      server_name _;
+
+      location = /healthz {
+        proxy_pass http://opencost:9003;
+      }
+
+      location /allocation/ {
+        proxy_pass http://opencost:9003;
+      }
+
+      location /model/ {
+        proxy_pass http://opencost:9003;
+      }
+
+      location / {
+        proxy_pass http://opencost:9090;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opencost-router
+  namespace: opencost
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opencost-router
+  template:
+    metadata:
+      labels:
+        app: opencost-router
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: opencost-router-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opencost-router
+  namespace: opencost
+spec:
+  type: ClusterIP
+  selector:
+    app: opencost-router
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
