@@ -144,7 +144,7 @@ jobs:
             --set extraArgs.reverse-proxy=true \
             --set extraArgs.email-domain="*" \
             --set extraArgs.github-user=oguduf \
-            --set-string extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9003" \
+            --set-string extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9090" \
             --set-string extraArgs.redirect-url="https://opencost.omergroup.click/oauth2/callback" \
             --set extraArgs.cookie-secure=true \
             --set extraArgs.cookie-httponly=true \
