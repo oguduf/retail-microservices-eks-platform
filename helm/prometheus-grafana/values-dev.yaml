@@ -71,6 +71,13 @@ kube-state-metrics:
       memory: 256Mi
 
 prometheus-node-exporter:
+  prometheus:
+    monitor:
+      # OpenCost joins node-exporter metrics to kube-state-metrics by node name.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+          action: replace
   resources:
     requests:
       cpu: 25m
