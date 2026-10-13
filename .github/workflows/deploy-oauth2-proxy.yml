@@ -1,0 +1,98 @@
+
+name: Deploy OpenCost OAuth2 Proxy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: GudufOAuth2Proxy
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Connect to EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION"
+
+      - name: Create OAuth2 Proxy secret
+        shell: bash
+        env:
+          CLIENT_ID: ${{ secrets.OPEN_COST_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.OPEN_COST_CLIENT_SECRET }}
+          COOKIE_SECRET: ${{ secrets.OPEN_COST_COOKIE_SECRET }}
+        run: |
+          set -euo pipefail
+
+          kubectl create secret generic oauth2-proxy-secrets \
+            --namespace opencost \
+            --from-literal=client-id="$CLIENT_ID" \
+            --from-literal=client-secret="$CLIENT_SECRET" \
+            --from-literal=cookie-secret="$COOKIE_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Add OAuth2 Proxy Helm repository
+        run: |
+          helm repo add oauth2-proxy \
+            https://oauth2-proxy.github.io/manifests
+          helm repo update
+
+      - name: Deploy OAuth2 Proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          helm upgrade --install oauth2-proxy \
+            oauth2-proxy/oauth2-proxy \
+            --namespace opencost \
+            --set config.existingSecret=oauth2-proxy-secrets \
+            --set config.clientID="" \
+            --set config.clientSecret="" \
+            --set config.cookieSecret="" \
+            --set extraArgs.provider=github \
+            --set extraArgs.reverse-proxy=true \
+            --set extraArgs.email-domain="*" \
+            --set extraArgs.github-user=oguduf \
+            --set extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9003" \
+            --set extraArgs.redirect-url="https://opencost.omergroup.click/oauth2/callback" \
+            --set extraArgs.cookie-secure=true \
+            --set extraArgs.cookie-httponly=true \
+            --set extraArgs.cookie-samesite=lax \
+            --set service.type=ClusterIP \
+            --wait \
+            --timeout 5m
+
+      - name: Verify OAuth2 Proxy
+        run: |
+          kubectl get pods -n opencost
+          kubectl get svc -n opencost
+          kubectl rollout status \
+            deployment/oauth2-proxy \
+            -n opencost \
+            --timeout=5m
