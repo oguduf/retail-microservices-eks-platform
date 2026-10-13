@@ -51,7 +51,21 @@ jobs:
           set -euo pipefail
 
           kubectl get namespace opencost
-          kubectl get services -n opencost
+          kubectl get svc -n opencost
+
+      - name: Inspect OpenCost service ports
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== OPEN COST SERVICES ====="
+          kubectl get svc -n opencost
+
+          echo "===== OPEN COST SERVICE DETAILS ====="
+          kubectl describe svc opencost -n opencost
+
+          echo "===== OPEN COST PODS ====="
+          kubectl get pods -n opencost
 
       - name: Validate OAuth credentials
         shell: bash
@@ -78,16 +92,11 @@ jobs:
           fi
 
           if [[ ! "$COOKIE_SECRET" =~ ^[0-9a-f]{32}$ ]]; then
-            echo "::error::Cookie secret must contain ASCII characters."
+            echo "::error::Cookie secret must be 32 lowercase hexadecimal characters."
             exit 1
           fi
 
-          if [[ "${#COOKIE_SECRET}" -ne 32 ]]; then
-            echo "::error::Cookie secret must be exactly 32 characters."
-            exit 1
-          fi
-
-          echo "OAuth credentials and cookie secret validated."
+          echo "OAuth credentials validated."
 
       - name: Create OAuth2 Proxy Kubernetes Secret
         shell: bash
@@ -130,7 +139,7 @@ jobs:
             --set extraArgs.reverse-proxy=true \
             --set extraArgs.email-domain="*" \
             --set extraArgs.github-user=oguduf \
-            --set-string extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9003" \
+            --set-string extraArgs.upstream="http://opencost.opencost.svc.cluster.local:9090" \
             --set-string extraArgs.redirect-url="https://opencost.omergroup.click/oauth2/callback" \
             --set extraArgs.cookie-secure=true \
             --set extraArgs.cookie-httponly=true \
@@ -138,74 +147,61 @@ jobs:
             --set service.type=ClusterIP \
             --timeout 5m
 
-      - name: Restart OAuth2 Proxy to load updated Secret
+      - name: Restart OAuth2 Proxy
         shell: bash
         run: |
           set -euo pipefail
 
           kubectl rollout restart \
             deployment/oauth2-proxy \
-            --namespace opencost
+            -n opencost
 
           kubectl rollout status \
             deployment/oauth2-proxy \
-            --namespace opencost \
+            -n opencost \
             --timeout=5m
 
-      - name: Diagnose OAuth2 Proxy deployment
+      - name: Verify OAuth2 Proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== PODS ====="
+          kubectl get pods -n opencost
+
+          echo "===== SERVICES ====="
+          kubectl get svc -n opencost
+
+          echo "===== OAUTH2 PROXY ARGUMENTS ====="
+          kubectl get deployment oauth2-proxy \
+            -n opencost \
+            -o json | jq -r '
+              .spec.template.spec.containers[]
+              | select(.name == "oauth2-proxy")
+              | .args[]
+              | select(
+                  startswith("--upstream")
+                  or startswith("--provider")
+                  or startswith("--github-user")
+                )
+            '
+
+      - name: Diagnose OAuth2 Proxy failure
         if: failure()
         shell: bash
         run: |
           echo "===== HELM STATUS ====="
           helm status oauth2-proxy -n opencost || true
 
-          echo "===== POD STATUS ====="
+          echo "===== PODS ====="
           kubectl get pods -n opencost -o wide || true
 
-          echo "===== DEPLOYMENT STATUS ====="
-          kubectl get deployments -n opencost || true
-
-          echo "===== OAUTH2 PROXY POD DETAILS ====="
-          kubectl describe pods \
-            -n opencost \
-            -l app.kubernetes.io/instance=oauth2-proxy || true
-
           echo "===== OAUTH2 PROXY LOGS ====="
-          kubectl logs \
+          kubectl logs deployment/oauth2-proxy \
             -n opencost \
-            -l app.kubernetes.io/instance=oauth2-proxy \
             -c oauth2-proxy \
-            --tail=80 \
-            --prefix=true || true
-
-          echo "===== PREVIOUS CRASH LOGS ====="
-          kubectl logs \
-            -n opencost \
-            deployment/oauth2-proxy \
-            -c oauth2-proxy \
-            --previous \
             --tail=100 || true
 
-          echo "===== RECENT KUBERNETES EVENTS ====="
-          kubectl get events \
-            -n opencost \
+          echo "===== EVENTS ====="
+          kubectl get events -n opencost \
             --sort-by=.lastTimestamp | tail -40 || true
-
-      - name: Verify OAuth2 Proxy deployment
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "Checking OAuth2 Proxy pods..."
-          kubectl get pods -n opencost
-
-          echo "Checking services..."
-          kubectl get svc -n opencost
-
-          echo "Checking deployment rollout..."
-          kubectl rollout status \
-            deployment/oauth2-proxy \
-            --namespace opencost \
-            --timeout=5m
-
-          echo "OAuth2 Proxy deployment successful."
