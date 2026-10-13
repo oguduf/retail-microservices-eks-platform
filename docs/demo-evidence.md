@@ -94,6 +94,12 @@ The EC2-Other usage-type export shows NAT Gateway hours ($1.13) as its largest c
 
 [Cost Explorer EC2-Other usage breakdown CSV](demo-evidence/week4-cost-explorer-ec2-other-usage-breakdown.csv)
 
+## Infracost push-to-dev estimate
+
+The Infracost Actions summary for a push to branch `dev` at commit `884774cca1725c70a8bb7bd5b3f29f27a94a84a` reports 149 resources (63 estimated and 86 free) and a projected monthly cost of $174. This is an infrastructure-as-code estimate, separate from the actual short-period AWS charges shown in Cost Explorer. The same scan reports seven FinOps warnings and one tagging warning.
+
+![Infracost scan summary after push to dev showing 149 resources and a $174 monthly estimate](demo-evidence/infracost-dev-push-cost-scan.png)
+
 ## CI security scan evidence
 
 The Platform CI scan job for commit `3d3679f` succeeded. Gitleaks reported no leaks in the commit it scanned; its output says one commit was scanned, so this run does not establish that the full Git history is clean. Checkov reported 221 passed, zero failed, and 40 skipped checks for Terraform, Docker, Kubernetes, and workflow configuration. The skipped checks have inline explanations for lab tradeoffs or controls implemented in separate Terraform resources. Trivy filesystem and event-producer image scans completed successfully under the configured High/Critical, ignore-unfixed gates. The captured logs do not include Trivy finding totals. The Node.js and Checkov deprecation warnings are tooling notices, not security findings.
