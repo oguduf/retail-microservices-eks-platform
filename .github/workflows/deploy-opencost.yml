@@ -114,6 +114,7 @@ jobs:
           helm upgrade --install opencost opencost/opencost \
             --namespace opencost \
             --create-namespace \
+            --values helm/opencost-values-dev.yaml \
             --wait \
             --timeout 5m \
             --set opencost.ui.enabled=true \
