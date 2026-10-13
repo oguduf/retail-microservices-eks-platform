@@ -77,7 +77,17 @@ jobs:
             exit 1
           fi
 
-          echo "OAuth credentials are configured."
+          if [[ ! "$COOKIE_SECRET" =~ ^[0-9a-f]{32}$ ]]; then
+            echo "::error::Cookie secret must contain ASCII characters."
+            exit 1
+          fi
+
+          if [[ "${#COOKIE_SECRET}" -ne 32 ]]; then
+            echo "::error::Cookie secret must be exactly 32 characters."
+            exit 1
+          fi
+
+          echo "OAuth credentials and cookie secret validated."
 
       - name: Create OAuth2 Proxy Kubernetes Secret
         shell: bash
@@ -94,6 +104,8 @@ jobs:
             --from-literal=client-secret="$CLIENT_SECRET" \
             --from-literal=cookie-secret="$COOKIE_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "OAuth2 Proxy Kubernetes Secret updated."
 
       - name: Add OAuth2 Proxy Helm repository
         shell: bash
@@ -124,8 +136,60 @@ jobs:
             --set extraArgs.cookie-httponly=true \
             --set extraArgs.cookie-samesite=lax \
             --set service.type=ClusterIP \
-            --wait \
             --timeout 5m
+
+      - name: Restart OAuth2 Proxy to load updated Secret
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl rollout restart \
+            deployment/oauth2-proxy \
+            --namespace opencost
+
+          kubectl rollout status \
+            deployment/oauth2-proxy \
+            --namespace opencost \
+            --timeout=5m
+
+      - name: Diagnose OAuth2 Proxy deployment
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== HELM STATUS ====="
+          helm status oauth2-proxy -n opencost || true
+
+          echo "===== POD STATUS ====="
+          kubectl get pods -n opencost -o wide || true
+
+          echo "===== DEPLOYMENT STATUS ====="
+          kubectl get deployments -n opencost || true
+
+          echo "===== OAUTH2 PROXY POD DETAILS ====="
+          kubectl describe pods \
+            -n opencost \
+            -l app.kubernetes.io/instance=oauth2-proxy || true
+
+          echo "===== OAUTH2 PROXY LOGS ====="
+          kubectl logs \
+            -n opencost \
+            -l app.kubernetes.io/instance=oauth2-proxy \
+            -c oauth2-proxy \
+            --tail=80 \
+            --prefix=true || true
+
+          echo "===== PREVIOUS CRASH LOGS ====="
+          kubectl logs \
+            -n opencost \
+            deployment/oauth2-proxy \
+            -c oauth2-proxy \
+            --previous \
+            --tail=100 || true
+
+          echo "===== RECENT KUBERNETES EVENTS ====="
+          kubectl get events \
+            -n opencost \
+            --sort-by=.lastTimestamp | tail -40 || true
 
       - name: Verify OAuth2 Proxy deployment
         shell: bash

@@ -1,0 +1,96 @@
+
+name: Deploy OpenCost HTTPS Ingress
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: GudufOpenCostIngress
+
+      - name: Connect to EKS
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION"
+
+      - name: Verify OAuth2 Proxy service
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl get deployment oauth2-proxy -n opencost
+          kubectl get service oauth2-proxy -n opencost
+          kubectl get endpointslice \
+            -n opencost \
+            -l kubernetes.io/service-name=oauth2-proxy
+
+      - name: Deploy HTTPS Ingress
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl apply \
+            -f k8s/opencost/opencost-ingress.yaml
+
+      - name: Verify Ingress
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl get ingress -n opencost
+
+          kubectl describe ingress \
+            opencost-auth-ingress \
+            -n opencost
+
+      - name: Show ALB hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for ALB hostname..."
+
+          for i in $(seq 1 30); do
+            ALB_DNS=$(kubectl get ingress \
+              opencost-auth-ingress \
+              -n opencost \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+            if [[ -n "$ALB_DNS" ]]; then
+              echo "ALB DNS: $ALB_DNS"
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "::error::ALB hostname was not assigned."
+          kubectl describe ingress opencost-auth-ingress -n opencost
+          exit 1
