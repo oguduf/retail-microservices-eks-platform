@@ -39,26 +39,35 @@ metadata:
   namespace: opencost
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
   selector:
     matchLabels:
       app: opencost-router
+
   template:
     metadata:
       labels:
         app: opencost-router
+
     spec:
       automountServiceAccountToken: false
 
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101
-        runAsGroup: 101
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
 
       containers:
         - name: nginx
-          image: nginxinc/nginx-unprivileged:1.27-alpine
+          image: nginxinc/nginx-unprivileged@sha256:REPLACE_WITH_VERIFIED_DIGEST
           imagePullPolicy: Always
 
           ports:
@@ -71,8 +80,8 @@ spec:
             privileged: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
-            runAsUser: 101
-            runAsGroup: 101
+            runAsUser: 10001
+            runAsGroup: 10001
             capabilities:
               drop:
                 - ALL
@@ -138,6 +147,7 @@ spec:
   type: ClusterIP
   selector:
     app: opencost-router
+
   ports:
     - name: http
       port: 8080
