@@ -10,20 +10,25 @@ data:
       listen 8080;
       server_name _;
 
-      location = /healthz {
-        proxy_pass http://opencost:9003;
-      }
-
-      location /allocation/ {
-        proxy_pass http://opencost:9003;
-      }
-
+      # API requests using the /model/ prefix
+      # Strip /model/ before forwarding to port 9003
       location /model/ {
-        proxy_pass http://opencost:9003;
+        proxy_pass http://opencost.opencost.svc.cluster.local:9003/;
       }
 
+      # Direct allocation API
+      location /allocation/ {
+        proxy_pass http://opencost.opencost.svc.cluster.local:9003;
+      }
+
+      # API health check
+      location = /healthz {
+        proxy_pass http://opencost.opencost.svc.cluster.local:9003;
+      }
+
+      # OpenCost web dashboard
       location / {
-        proxy_pass http://opencost:9090;
+        proxy_pass http://opencost.opencost.svc.cluster.local:9090;
       }
     }
 ---
