@@ -79,22 +79,27 @@ jobs:
             sleep 2
           done
 
-          for metric in \
-            kube_node_info \
-            kube_node_status_capacity \
-            kube_node_status_allocatable \
-            node_cpu_seconds_total \
-            node_memory_MemTotal_bytes \
-            kube_persistentvolume_info \
-            kubecost_node_is_spot
-          do
-            echo "===== METRIC: $metric ====="
-
-            curl -fsSG \
-              --data-urlencode "query=count($metric)" \
-              http://127.0.0.1:19090/api/v1/query \
-              | jq -c '.data.result'
-          done
+          {
+            echo "## Prometheus asset metrics"
+            echo '```text'
+            for metric in \
+              kube_node_info \
+              kube_node_labels \
+              kube_node_status_capacity \
+              kube_node_status_allocatable \
+              node_cpu_seconds_total \
+              node_memory_MemTotal_bytes \
+              kube_persistentvolume_info \
+              kubecost_node_is_spot
+            do
+              echo "===== METRIC: $metric ====="
+              curl -fsSG \
+                --data-urlencode "query=$metric" \
+                http://127.0.0.1:19090/api/v1/query \
+                | jq -c '.data.result[:10]'
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Check OpenCost internal Assets API
         shell: bash
@@ -119,24 +124,18 @@ jobs:
             sleep 2
           done
 
-          for window in 1h 1d 7d; do
-            echo "===== ASSETS WINDOW: $window ====="
-
-            curl -fsSG \
-              --data-urlencode "window=$window" \
-              http://127.0.0.1:19003/assets \
-              | jq -c '{
-                  code: .code,
-                  dataType: (.data | type),
-                  assetCount: (
-                    if (.data | type) == "object"
-                    then (.data | length)
-                    else null
-                    end
-                  ),
-                  error: .message
-                }'
-          done
+          {
+            echo "## OpenCost assets API"
+            echo '```json'
+            for window in 1h 1d 7d; do
+              echo "===== ASSETS WINDOW: $window ====="
+              curl -fsSG \
+                --data-urlencode "window=$window" \
+                http://127.0.0.1:19003/assets \
+                | jq -c '{code: .code, status: .status, assets: (.data // {}), error: .message}'
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Inspect OpenCost logs
         if: always()
