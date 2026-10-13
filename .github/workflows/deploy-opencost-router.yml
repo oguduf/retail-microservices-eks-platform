@@ -1,48 +1,5 @@
+git add .github/workflows/deploy-opencost-router.yml
+git add k8s/opencost/opencost-router.yaml
 
-name: Deploy OpenCost Router
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-
-jobs:
-  deploy:
-    if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.3.0
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Connect to EKS
-        run: |
-          aws eks update-kubeconfig \
-            --name "$EKS_CLUSTER_NAME" \
-            --region "$AWS_REGION"
-
-      - name: Deploy OpenCost router
-        run: |
-          kubectl apply -f k8s/opencost/opencost-router.yaml
-
-          kubectl rollout status \
-            deployment/opencost-router \
-            -n opencost \
-            --timeout=180s
-
-          kubectl get svc opencost-router -n opencost
+git commit -m "Fix OpenCost API routing and restart NGINX"
+git push origin dev
