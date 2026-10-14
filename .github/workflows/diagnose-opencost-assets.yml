@@ -53,8 +53,28 @@ jobs:
           echo "===== PROMETHEUS PODS ====="
           kubectl get pods -n observability
 
+          echo "===== NODE EXPORTER SERVICEMONITOR ====="
+          kubectl get servicemonitors -n observability -o json \
+            | jq '.items[] | select(.metadata.name | contains("node-exporter")) | {name: .metadata.name, endpoints: .spec.endpoints}'
           echo "===== OPEN COST SERVICE ====="
           kubectl get svc opencost -n opencost
+
+          echo "===== NODE LABELS USED FOR PRICING ====="
+          kubectl get nodes -o json | jq -r '
+            .items[] | {
+              name: .metadata.name,
+              providerID: .spec.providerID,
+              labels: {
+                instanceType: .metadata.labels["node.kubernetes.io/instance-type"],
+                legacyInstanceType: .metadata.labels["beta.kubernetes.io/instance-type"],
+                region: .metadata.labels["topology.kubernetes.io/region"],
+                legacyRegion: .metadata.labels["failure-domain.beta.kubernetes.io/region"]
+              }
+            }'
+
+          echo "===== OPENCOST NODE RBAC ====="
+          kubectl auth can-i list nodes --as=system:serviceaccount:opencost:opencost
+          kubectl auth can-i watch nodes --as=system:serviceaccount:opencost:opencost
 
       - name: Check Prometheus asset metrics
         shell: bash
@@ -79,22 +99,32 @@ jobs:
             sleep 2
           done
 
-          for metric in \
-            kube_node_info \
-            kube_node_status_capacity \
-            kube_node_status_allocatable \
-            node_cpu_seconds_total \
-            node_memory_MemTotal_bytes \
-            kube_persistentvolume_info \
-            kubecost_node_is_spot
-          do
-            echo "===== METRIC: $metric ====="
-
-            curl -fsSG \
-              --data-urlencode "query=count($metric)" \
-              http://127.0.0.1:19090/api/v1/query \
-              | jq -c '.data.result'
-          done
+          {
+            echo "## Prometheus asset metrics"
+            echo '```text'
+            for metric in \
+              kube_node_info \
+              kube_node_labels \
+              kube_node_status_capacity \
+              kube_node_status_allocatable \
+              node_cpu_seconds_total \
+              node_memory_MemTotal_bytes \
+              kube_persistentvolume_info \
+              kubecost_node_is_spot \
+              node_cpu_hourly_cost \
+              node_ram_hourly_cost \
+              node_total_hourly_cost \
+              container_cpu_allocation \
+              container_memory_allocation_bytes
+            do
+              echo "===== METRIC: $metric ====="
+              curl -fsSG \
+                --data-urlencode "query=$metric" \
+                http://127.0.0.1:19090/api/v1/query \
+                | jq -c '.data.result[:10]'
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Check OpenCost internal Assets API
         shell: bash
@@ -119,24 +149,24 @@ jobs:
             sleep 2
           done
 
-          for window in 1h 1d 7d; do
-            echo "===== ASSETS WINDOW: $window ====="
+          {
+            echo "## OpenCost assets API"
+            echo '```json'
+            for window in 1h 1d 7d; do
+              echo "===== ASSETS WINDOW: $window ====="
+              curl -fsSG \
+                --data-urlencode "window=$window" \
+                http://127.0.0.1:19003/assets \
+                | jq -c '{code: .code, status: .status, assets: (.data // {}), error: .message}'
+            done
 
+            echo "===== COMPUTE ALLOCATION API: 1h ====="
             curl -fsSG \
-              --data-urlencode "window=$window" \
-              http://127.0.0.1:19003/assets \
-              | jq -c '{
-                  code: .code,
-                  dataType: (.data | type),
-                  assetCount: (
-                    if (.data | type) == "object"
-                    then (.data | length)
-                    else null
-                    end
-                  ),
-                  error: .message
-                }'
-          done
+              --data-urlencode "window=1h" \
+              http://127.0.0.1:19003/allocation/compute \
+              | jq -c '{code: .code, status: .status, dataCount: (.data | length), sample: ((.data // {}) | to_entries[:3])}'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Inspect OpenCost logs
         if: always()

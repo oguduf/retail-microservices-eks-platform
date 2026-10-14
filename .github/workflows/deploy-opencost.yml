@@ -3,6 +3,12 @@ name: Deploy OpenCost to EKS
 
 on:
   workflow_dispatch:
+    inputs:
+      restart_opencost:
+        description: "Restart OpenCost after applying configuration to reload Prometheus metadata."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -114,12 +120,22 @@ jobs:
           helm upgrade --install opencost opencost/opencost \
             --namespace opencost \
             --create-namespace \
+            --values helm/opencost-values-dev.yaml \
             --wait \
             --timeout 5m \
             --set opencost.ui.enabled=true \
             --set-string opencost.prometheus.internal.namespaceName="${{ steps.prometheus.outputs.namespace }}" \
             --set-string opencost.prometheus.internal.serviceName="${{ steps.prometheus.outputs.service }}" \
             --set opencost.prometheus.internal.port="${{ steps.prometheus.outputs.port }}"
+
+      - name: Restart OpenCost to reload Prometheus metadata
+        if: ${{ inputs.restart_opencost }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl rollout restart deployment/opencost -n opencost
+          kubectl rollout status deployment/opencost -n opencost --timeout=5m
 
       - name: Verify OpenCost
         shell: bash

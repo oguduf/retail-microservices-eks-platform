@@ -1,0 +1,20 @@
+# OpenCost runs as UID 1001. Give it a writable runtime config directory so
+# it can cache provider pricing and configuration files without writing to the image.
+opencost:
+  podSecurityContext:
+    fsGroup: 1001
+  metrics:
+    serviceMonitor:
+      enabled: true
+      # kube-prometheus-stack selects monitors carrying its Helm release label.
+      additionalLabels:
+        release: prometheus-grafana
+      namespace: observability
+  exporter:
+    extraVolumeMounts:
+      - name: opencost-config
+        mountPath: /var/configs
+
+extraVolumes:
+  - name: opencost-config
+    emptyDir: {}

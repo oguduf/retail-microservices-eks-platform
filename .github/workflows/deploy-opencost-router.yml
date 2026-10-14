@@ -21,31 +21,18 @@ jobs:
       id-token: write
 
     steps:
-      # Step 1: Download repository code
+      # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Step 2: Retrieve the official NGINX image digest
-      - name: Get NGINX image digest
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "Retrieving NGINX image digest..."
-
-          docker buildx imagetools inspect \
-            nginxinc/nginx-unprivileged:1.27-alpine
-
-          echo "Digest inspection completed."
-
-      # Step 3: Authenticate to AWS using GitHub OIDC
+      # Step 2: Authenticate to AWS using OIDC
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Step 4: Connect to EKS
+      # Step 3: Connect to EKS
       - name: Connect to EKS
         shell: bash
         run: |
@@ -55,26 +42,66 @@ jobs:
             --name "$EKS_CLUSTER_NAME" \
             --region "$AWS_REGION"
 
-      # Step 5: Confirm current router is running
-      - name: Check existing OpenCost router
+      # Step 4: Validate Kubernetes manifest
+      - name: Validate OpenCost router manifest
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Checking existing OpenCost router deployment..."
+          kubectl apply \
+            --dry-run=server \
+            -f k8s/opencost/opencost-router.yaml
+
+      # Step 5: Deploy OpenCost router
+      - name: Deploy OpenCost router
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Applying OpenCost router configuration..."
+
+          kubectl apply \
+            -f k8s/opencost/opencost-router.yaml
+
+          echo "Waiting for OpenCost router rollout..."
+
+          kubectl rollout status \
+            deployment/opencost-router \
+            -n opencost \
+            --timeout=180s
+
+          echo "Checking router deployment..."
 
           kubectl get deployment opencost-router \
             -n opencost
 
-          echo "Checking existing router pods..."
+          echo "Checking router service..."
+
+          kubectl get svc opencost-router \
+            -n opencost
+
+          echo "Checking router pods..."
 
           kubectl get pods \
             -n opencost \
             -l app=opencost-router
 
-          echo "Checking existing router service..."
+      # Step 6: Diagnose deployment failures
+      - name: Diagnose router failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== ROUTER PODS ====="
+          kubectl get pods \
+            -n opencost \
+            -l app=opencost-router || true
 
-          kubectl get svc opencost-router \
-            -n opencost
+          echo "===== ROUTER LOGS ====="
+          kubectl logs deployment/opencost-router \
+            -n opencost \
+            --tail=100 || true
 
-          echo "No deployment changes were made."
+          echo "===== ROUTER EVENTS ====="
+          kubectl get events \
+            -n opencost \
+            --sort-by=.lastTimestamp | tail -30 || true
