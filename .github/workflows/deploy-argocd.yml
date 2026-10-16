@@ -15,6 +15,8 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      ARGOCD_ALLOWED_CIDR: ${{ vars.ARGOCD_ALLOWED_CIDR }}
+      ARGOCD_CERTIFICATE_ARN: ${{ vars.ARGOCD_CERTIFICATE_ARN }}
 
     steps:
       - name: Require the dev branch
@@ -68,3 +70,60 @@ jobs:
           kubectl get deployments,statefulsets,pods \
             --namespace argocd \
             --output wide
+
+      - name: Expose Argo CD through restricted HTTPS ingress
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${ARGOCD_ALLOWED_CIDR:?Set the ARGOCD_ALLOWED_CIDR GitHub Actions variable}"
+          : "${ARGOCD_CERTIFICATE_ARN:?Set the ARGOCD_CERTIFICATE_ARN GitHub Actions variable}"
+
+          cat <<EOF | kubectl apply --filename -
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: argocd-server
+            namespace: argocd
+            annotations:
+              alb.ingress.kubernetes.io/certificate-arn: "${ARGOCD_CERTIFICATE_ARN}"
+              alb.ingress.kubernetes.io/healthcheck-path: /healthz
+              alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+              alb.ingress.kubernetes.io/healthcheck-protocol: HTTPS
+              alb.ingress.kubernetes.io/inbound-cidrs: "${ARGOCD_ALLOWED_CIDR}"
+              alb.ingress.kubernetes.io/ip-address-type: ipv4
+              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/ssl-redirect: "443"
+              alb.ingress.kubernetes.io/success-codes: "200"
+              alb.ingress.kubernetes.io/target-type: ip
+              alb.ingress.kubernetes.io/backend-protocol: HTTPS
+          spec:
+            ingressClassName: alb
+            rules:
+              - host: argocd.omergroup.click
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: argocd-server
+                          port:
+                            number: 443
+          EOF
+
+          for attempt in $(seq 1 60); do
+            ingress_hostname="$(kubectl get ingress argocd-server \
+              --namespace argocd \
+              --output jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            if [[ -n "$ingress_hostname" ]]; then
+              echo "Argo CD ALB hostname: $ingress_hostname"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          kubectl describe ingress argocd-server --namespace argocd
+          echo "::error::Timed out waiting for the Argo CD ALB hostname."
+          exit 1
