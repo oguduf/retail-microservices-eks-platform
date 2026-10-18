@@ -62,6 +62,14 @@ resource "aws_eks_addon" "cloudwatch_observability" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "amazon-cloudwatch-observability"
   service_account_role_arn    = aws_iam_role.cloudwatch_observability.arn
+  configuration_values        = jsonencode({
+    containerInsights = {
+      enabled = false
+    }
+    containerLogs = {
+      enabled = true
+    }
+  })
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "PRESERVE"
 
