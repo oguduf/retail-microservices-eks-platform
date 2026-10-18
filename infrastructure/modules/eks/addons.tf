@@ -59,10 +59,10 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_xray" {
 }
 
 resource "aws_eks_addon" "cloudwatch_observability" {
-  cluster_name                = aws_eks_cluster.main.name
-  addon_name                  = "amazon-cloudwatch-observability"
-  service_account_role_arn    = aws_iam_role.cloudwatch_observability.arn
-  configuration_values        = jsonencode({
+  cluster_name             = aws_eks_cluster.main.name
+  addon_name               = "amazon-cloudwatch-observability"
+  service_account_role_arn = aws_iam_role.cloudwatch_observability.arn
+  configuration_values = jsonencode({
     containerInsights = {
       enabled = false
     }
