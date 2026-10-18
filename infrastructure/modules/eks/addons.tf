@@ -79,3 +79,72 @@ resource "aws_eks_addon" "cloudwatch_observability" {
     aws_iam_role_policy_attachment.cloudwatch_xray
   ]
 }
+
+resource "aws_iam_role" "grafana_cloudwatch" {
+  name = "${var.cluster_name}-grafana-cloudwatch-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.eks.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
+          "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:observability:grafana-cloudwatch"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "grafana_cloudwatch_read" {
+  name = "${var.cluster_name}-grafana-cloudwatch-read"
+  role = aws_iam_role.grafana_cloudwatch.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadCloudWatchMetrics"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:GetMetricData",
+          "cloudwatch:ListMetrics"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "DiscoverLogGroups"
+        Effect   = "Allow"
+        Action   = "logs:DescribeLogGroups"
+        Resource = "*"
+      },
+      {
+        Sid    = "QueryClusterLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:GetLogEvents",
+          "logs:GetLogGroupFields",
+          "logs:StartQuery"
+        ]
+        Resource = [
+          "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/containerinsights/${var.cluster_name}/*:*",
+          "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${var.cluster_name}/cluster:*"
+        ]
+      },
+      {
+        Sid    = "ReadQueryResults"
+        Effect = "Allow"
+        Action = [
+          "logs:GetQueryResults",
+          "logs:StopQuery"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
