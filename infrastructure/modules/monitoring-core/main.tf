@@ -59,7 +59,8 @@ resource "aws_s3_bucket" "event_archive" {
   #checkov:skip=CKV_AWS_144:Cross-region replication is intentionally not configured for this single-region development archive.
   #checkov:skip=CKV_AWS_19:KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.event_archive below; Checkov 2.0.930 does not correlate the separate encryption resource.
   #checkov:skip=CKV_AWS_145:Customer-managed KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.event_archive below; Checkov 2.0.930 does not correlate the separate encryption resource.
-  bucket = "${var.project_name}-${var.environment}-monitoring-events-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${var.project_name}-${var.environment}-monitoring-events-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
 
   tags = {
     Repository = "retail-microservices-eks-platform"
@@ -108,7 +109,8 @@ resource "aws_s3_bucket" "event_archive_access_logs" {
   #checkov:skip=CKV_AWS_19:SSE-S3 encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.event_archive_access_logs below; Checkov 2.0.930 does not correlate the separate encryption resource.
   #checkov:skip=CKV_AWS_145:S3 server access log delivery requires SSE-S3; SSE-KMS destinations are unsupported.
   #checkov:skip=CKV_AWS_144:Cross-region replication is not configured for this single-region development log sink.
-  bucket = "${var.project_name}-${var.environment}-monitoring-access-logs-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${var.project_name}-${var.environment}-monitoring-access-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
 
   tags = {
     Repository = "retail-microservices-eks-platform"

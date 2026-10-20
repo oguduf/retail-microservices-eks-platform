@@ -148,6 +148,20 @@ jobs:
           TF_VAR_monitoring_alert_email: ${{ vars.MONITORING_ALERT_EMAIL }}
         run: terraform plan -destroy -input=false -out=tfplan -var="aws_region=${{ vars.AWS_REGION }}" -var="project_name=${{ vars.PROJECT_NAME }}" -var="environment=${{ vars.ENVIRONMENT }}"
 
+      - name: Summarize Terraform destroy plan
+        if: ${{ inputs.operation == 'destroy-plan' || inputs.operation == 'destroy-apply' }}
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > "$RUNNER_TEMP/tfplan.json"
+          jq -r '
+            [.resource_changes[]? | select(.change.actions != ["no-op"]) |
+              {address, actions: (.change.actions | join(", "))}] as $changes
+            | "## Terraform destroy plan\n\nResources affected: \($changes | length)\n\n"
+              + "### Resource actions\n\n"
+              + ($changes | map("- `\(.address)` — \(.actions)") | join("\n"))
+              + "\n"
+          ' "$RUNNER_TEMP/tfplan.json" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Apply Terraform plan
         if: ${{ inputs.operation == 'apply' || inputs.operation == 'destroy-apply' }}
         run: terraform apply -input=false -auto-approve tfplan
