@@ -100,6 +100,26 @@ The Infracost Actions summary for a push to branch `dev` at commit `884774cca172
 
 ![Infracost scan summary after push to dev showing 149 resources and a $174 monthly estimate](demo-evidence/infracost-dev-push-cost-scan.png)
 
+## OpenCost allocation evidence
+
+OpenCost is deployed in the development cluster; its Helm configuration is maintained in `helm/opencost-values-dev.yaml`. The screenshots below capture separate dashboard views. They show Kubernetes cost allocation estimates for the selected periods, not invoice totals or measured savings. They are not a CUR reconciliation.
+
+The **last 7 days by namespace (daily)** view reports $8.78 total allocated cost: $6.99 CPU and $1.79 RAM, with 12.6% displayed efficiency. The table highlights shared namespace allocation and an `__idle__` allocation for follow-up. These values are rounded dashboard estimates; do not sum rounded rows to derive a new total.
+
+![OpenCost namespace allocation for the last 7 days, including CPU, RAM, efficiency, and total allocated cost](demo-evidence/opencost-namespace-allocation-last-7-days.png)
+
+![OpenCost cost breakdown table for the last 7 days](demo-evidence/opencost-cost-breakdown-last-7-days.png)
+
+A separate **Infrastructure Assets** view reports $8.82 for “This period” across three assets and 4.41 kg CO₂e; average utilization is unavailable in the screenshot. Its period and aggregation differ from the namespace table, so keep it separate from the $8.78 figure.
+
+![OpenCost infrastructure assets summary showing cost and carbon allocation](demo-evidence/opencost-infrastructure-assets-summary.png)
+
+The cluster cost breakdown and namespace trend views each show $2.83 for October 14. These are separate single-day views; the screenshots do not establish a trend over multiple days.
+
+![OpenCost cluster cost breakdown by namespace for October 14](demo-evidence/opencost-cluster-cost-breakdown-2026-10-14.png)
+
+![OpenCost namespace cost trend view for October 14](demo-evidence/opencost-namespace-cost-trend-2026-10-14.png)
+
 ## CI security scan evidence
 
 The Platform CI scan job for commit `3d3679f` succeeded. Gitleaks reported no leaks in the commit it scanned; its output says one commit was scanned, so this run does not establish that the full Git history is clean. Checkov reported 221 passed, zero failed, and 40 skipped checks for Terraform, Docker, Kubernetes, and workflow configuration. The skipped checks have inline explanations for lab tradeoffs or controls implemented in separate Terraform resources. Trivy filesystem and event-producer image scans completed successfully under the configured High/Critical, ignore-unfixed gates. The captured logs do not include Trivy finding totals. The Node.js and Checkov deprecation warnings are tooling notices, not security findings.

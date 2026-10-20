@@ -9,6 +9,22 @@ defaultRules:
 
 grafana:
   enabled: true
+  podSecurityContext:
+    fsGroup: 472 # Allows Grafana's non-root process to read the IRSA projected token.
+    runAsUser: 472
+    runAsGroup: 472
+  serviceAccount:
+    create: true
+    name: grafana-cloudwatch
+  additionalDataSources:
+    - name: CloudWatch
+      uid: cloudwatch
+      type: cloudwatch
+      access: proxy
+      isDefault: false
+      jsonData:
+        authType: default
+        defaultRegion: us-east-2
   admin:
     existingSecret: grafana-admin
     userKey: admin-user
@@ -26,10 +42,10 @@ grafana:
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 300m
-      memory: 384Mi
+      memory: 768Mi
 
 prometheus:
   enabled: true

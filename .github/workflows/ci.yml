@@ -53,6 +53,9 @@ jobs:
             --version 92.3.0 \
             --values helm/prometheus-grafana/values-dev.yaml \
             --include-crds > /tmp/prometheus-grafana-rendered.yaml
+          grep -q 'name: grafana-cloudwatch' /tmp/prometheus-grafana-rendered.yaml
+          grep -q 'type: cloudwatch' /tmp/prometheus-grafana-rendered.yaml
+          grep -q 'uid: cloudwatch' /tmp/prometheus-grafana-rendered.yaml
           helm template prometheus-grafana prometheus-community/kube-prometheus-stack \
             --namespace observability \
             --version 92.3.0 \

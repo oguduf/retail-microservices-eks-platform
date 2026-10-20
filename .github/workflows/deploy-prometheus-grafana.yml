@@ -80,6 +80,19 @@ jobs:
       - name: Connect to Amazon EKS
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
 
+      - name: Prepare Grafana IRSA values
+        shell: bash
+        run: |
+          set -euo pipefail
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          role_arn="arn:aws:iam::${account_id}:role/${EKS_CLUSTER_NAME}-grafana-cloudwatch-role"
+          cat > "$RUNNER_TEMP/grafana-irsa-values.yaml" <<EOF
+          grafana:
+            serviceAccount:
+              annotations:
+                eks.amazonaws.com/role-arn: "${role_arn}"
+          EOF
+
       - name: Create namespace and Grafana credential Secret
         shell: bash
         env:
@@ -111,6 +124,7 @@ jobs:
             --namespace observability \
             --version 92.3.0 \
             --values helm/prometheus-grafana/values-dev.yaml \
+            --values "$RUNNER_TEMP/grafana-irsa-values.yaml" \
             "${values_args[@]}" \
             --wait --timeout 15m
 

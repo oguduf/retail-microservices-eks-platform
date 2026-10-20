@@ -4,6 +4,8 @@ The Coffee Store application source, local development setup, and AWS deployment
 
 This repository manages the shared AWS development platform for the Roast & Relay Coffee Store and its separate Kubernetes event-driven monitoring demo. Terraform manages AWS infrastructure; GitHub Actions uses OIDC for infrastructure and application delivery.
 
+The deployed storefront is maintained in the application repository and currently supports coffee origin and tasting details, recommended brew methods, 12 oz and 2 lb bag options, grind selection, interactive 3D bag previews, and a multi-item cart. Checkout uses the application order and inventory services; payment processing remains out of scope.
+
 ## Architecture
 
 ```mermaid
@@ -67,8 +69,9 @@ Terraform defines the VPC, EKS, ECR, RDS PostgreSQL, messaging, and monitoring r
 infrastructure/bootstrap/          S3 remote-state backend and access logs
 infrastructure/environments/dev/   Dev root module and outputs
 infrastructure/modules/            Network, EKS, database, messaging, monitoring, observability, and budget modules
-kubernetes/           Namespace and event-producer Kubernetes manifests
-helm/                 Development values for the AWS Load Balancer Controller chart
+kubernetes/                         Namespace and event-producer Kubernetes manifests
+k8s/                                Argo CD and OpenCost Kubernetes manifests
+helm/                               Values for AWS Load Balancer Controller, OpenCost, and Prometheus/Grafana
 lambda/               Event processor and query API Lambda code
 docs/                 Architecture, runbook, migration/cost plan, and demo evidence
 .github/workflows/    Terraform, platform deployment, and security workflows
@@ -81,10 +84,20 @@ The dev root calls the component modules from `main.tf`. The database, budget, a
 | Workflow file | Purpose |
 |---|---|
 | `.github/workflows/terraform-dev.yml` | Validates and plans platform changes, supports reviewed apply/destroy operations, and runs weekly read-only drift detection. Requires the remote-state bucket to exist first. |
+| `.github/workflows/terraform-force-unlock.yml` | Manually releases an exact Terraform state lock after the original run is confirmed stopped. |
+| `.github/workflows/ci.yml` | Validates and security-scans platform configuration and builds/scans the event-producer image without deploying. |
+| `.github/workflows/infracost-scan.yml` | Estimates development infrastructure cost on pushes to `dev` and publishes scan diagnostics. |
+| `.github/workflows/infracost-diff.yml` | Reports the estimated cost change introduced by a pull request. |
+| `.github/workflows/deploy-argocd.yml` | Installs self-managed Argo CD in EKS, sets its admin password from a GitHub secret, and creates a CIDR-restricted HTTPS ALB ingress. |
 | `.github/workflows/deploy-event-producer.yml` | Manually builds and pushes the monitoring event-producer image, applies its Kubernetes resources to EKS, and checks the rollout. It reads deployment values from Terraform state. |
 | `.github/workflows/deploy-load-balancer-controller.yml` | Manually installs or upgrades the AWS Load Balancer Controller with Helm, using `helm/aws-load-balancer-controller/values-dev.yaml`, then verifies its rollout. |
 | `.github/workflows/deploy-karpenter.yml` | Installs the pinned Karpenter controller and applies the bounded dev NodePool after Terraform has been applied. |
-| `.github/workflows/ci.yml` | On pushes to `dev`, pull requests to `main`, and manual runs: validates Terraform, scans for secrets and configuration/dependency issues, and builds/scans the event-producer image without deploying. |
+| `.github/workflows/deploy-prometheus-grafana.yml` | Manually installs or updates the pinned Prometheus/Grafana stack; Grafana can remain private or use optional HTTPS ingress. |
+| `.github/workflows/deploy-opencost.yml` | Manually installs or updates OpenCost and verifies its connection to Prometheus. |
+| `.github/workflows/deploy-opencost-router.yml` | Applies and verifies the internal OpenCost router for dashboard and API traffic. |
+| `.github/workflows/deploy-oauth2-proxy.yml` | Manually deploys OAuth2 Proxy with credentials stored in GitHub Actions secrets to protect OpenCost access. |
+| `.github/workflows/deploy-opencost-ingress.yml` | Applies and verifies the HTTPS ALB ingress for the authenticated OpenCost endpoint. |
+| `.github/workflows/diagnose-opencost-assets.yml` | Checks OpenCost, Prometheus asset metrics, cluster services, and relevant logs/configuration without deploying changes. |
 
 ## Delivery flow
 
@@ -92,7 +105,7 @@ The dev root calls the component modules from `main.tf`. The database, budget, a
 2. Terraform plans infrastructure changes against the existing S3 remote state.
 3. Terraform provisions the EKS CloudWatch Observability add-on, 14-day application log retention, a dashboard, RDS alarms, 60-second RDS Enhanced Monitoring, and a configurable monthly cost budget (email alerts require `MONITORING_ALERT_EMAIL`). An optional, manually triggered GitHub Actions workflow deploys Prometheus and Grafana into the cluster using the pinned `kube-prometheus-stack` chart; it uses ClusterIP-only services and short-lived in-cluster metric storage by default. A separate workflow choice can enable an internet-facing ALB with HTTPS for Grafana after an ACM certificate is issued; Grafana's login remains required. See `docs/grafana-access.md`.
 4. The platform `Deploy Karpenter autoscaling` workflow installs the controller and bounded NodePool after Terraform has created its IAM roles, EKS access entry, and subnet/security-group discovery tags.
-5. In `retail-application`, CI tests and scans the five services. A separate deployment workflow builds and pushes digest-pinned images, installs Metrics Server and VPA, deploys the Helm chart, and verifies rollouts, HPAs, and VPAs.
+5. In `retail-application`, CI tests the services and validates the chart. On pushes to `dev`, it waits for the matching security checks, builds and scans all five images, pushes digest-pinned images to ECR through OIDC, and commits their references to `helm/coffee-store/images.json`. Argo CD watches that chart path and auto-syncs the committed image change. The manual `Configure Coffee Store Argo CD` workflow configures the live Application and verifies its sync and rollout state; application releases are no longer performed by a direct Helm upgrade.
 6. The platform workflow separately builds and deploys the monitoring event producer; Lambda functions process monitoring SQS messages and serve queries through API Gateway.
 
 ## CI and deployment gates
@@ -109,6 +122,7 @@ Trivy's file-scoped, expiring lab exceptions are documented in `.trivyignore.yam
 - CPU-based HPAs scale Product, Inventory, Orders, Notifications, and Frontend between one and three replicas. Metrics Server supplies resource metrics. VPA adjusts bounded memory requests and limits; it can adjust CPU only for the singleton outbox relay so it does not conflict with CPU-based HPAs.
 - The managed node group is deliberately fixed at one small node for core add-ons and controller availability. Karpenter adds on-demand C/M/R-family nodes as pending Pods require capacity and consolidates underused nodes; the dev NodePool is limited to three nodes, 12 vCPU, and 48 GiB. Karpenter evaluates these limits asynchronously, so a rapid burst can briefly exceed them. This is a bounded dev setup, not a guarantee of zero interruption or a production capacity plan.
 - CloudWatch Observability collects EKS metrics and logs; dashboards and RDS alarms support operations. EKS log retention is set to 14 days. The optional Prometheus/Grafana stack provides Kubernetes-native metrics and dashboards; it is non-persistent and manually deployed from GitHub Actions. Set the repository Actions secret `GRAFANA_ADMIN_PASSWORD` before running its workflow. Grafana is private by default; its optional public HTTPS access requires a matching ACM certificate and Route 53 alias, and adds ALB cost. See `docs/grafana-access.md`.
+- Self-managed Argo CD runs in EKS and reconciles the Coffee Store Helm chart from the application repository. OpenCost uses Prometheus metrics to estimate Kubernetes cost allocation; its HTTPS endpoint is routed through OAuth2 Proxy. OpenCost allocations are estimates, not invoice reconciliation; `docs/demo-evidence.md` records the current cost views and their reporting limits.
 - Terraform CI validates configuration and a weekly scheduled plan detects drift without applying changes. Keep the existing remote-state bucket available; bootstrap a new one only when deploying into a fresh account or after intentionally removing the backend.
 - ECR/S3 lifecycle policies limit retained artifacts. An AWS Budget alerts at 80% actual and 100% forecasted spend when `MONITORING_ALERT_EMAIL` is configured; budgets do not stop spend.
 

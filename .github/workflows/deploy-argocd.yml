@@ -71,6 +71,42 @@ jobs:
             --namespace argocd \
             --output wide
 
+      - name: Set Argo CD admin password
+        shell: bash
+        env:
+          ARGOCD_ADMIN_PASSWORD: ${{ secrets.ARGOCD_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          : "${ARGOCD_ADMIN_PASSWORD:?Set the ARGOCD_ADMIN_PASSWORD GitHub Actions secret}"
+          if (( ${#ARGOCD_ADMIN_PASSWORD} < 16 )); then
+            echo "::error::ARGOCD_ADMIN_PASSWORD must be at least 16 characters."
+            exit 1
+          fi
+          echo "::add-mask::${ARGOCD_ADMIN_PASSWORD}"
+
+          argocd_version="v3.5.5"
+          argocd_binary="${RUNNER_TEMP}/argocd"
+          curl --fail --silent --show-error --location \
+            "https://github.com/argoproj/argo-cd/releases/download/${argocd_version}/argocd-linux-amd64" \
+            --output "$argocd_binary"
+          chmod 0755 "$argocd_binary"
+
+          password_hash="$("$argocd_binary" account bcrypt --password "$ARGOCD_ADMIN_PASSWORD")"
+          password_mtime="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          secret_patch="$(jq -n \
+            --arg password_hash "$password_hash" \
+            --arg password_mtime "$password_mtime" \
+            '{stringData: {"admin.password": $password_hash, "admin.passwordMtime": $password_mtime}}')"
+
+          kubectl patch secret argocd-secret \
+            --namespace argocd \
+            --type merge \
+            --patch "$secret_patch"
+          kubectl delete secret argocd-initial-admin-secret \
+            --namespace argocd \
+            --ignore-not-found=true
+
       - name: Expose Argo CD through restricted HTTPS ingress
         shell: bash
         run: |
