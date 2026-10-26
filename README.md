@@ -4,7 +4,7 @@ The Coffee Store application source, local development setup, and AWS deployment
 
 This repository manages the shared AWS development platform for the Roast & Relay Coffee Store and its separate Kubernetes event-driven monitoring demo. Terraform manages AWS infrastructure; GitHub Actions uses OIDC for infrastructure and application delivery.
 
-The deployed storefront is maintained in the application repository and currently supports coffee origin and tasting details, recommended brew methods, 12 oz and 2 lb bag options, grind selection, interactive 3D bag previews, and a multi-item cart. Checkout uses the application order and inventory services; payment processing remains out of scope.
+The example storefront is maintained in the application repository and supports coffee origin and tasting details, recommended brew methods, 12 oz and 2 lb bag options, grind selection, interactive 3D bag previews, and a multi-item cart. Checkout uses the application order and inventory services; payment processing remains out of scope.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ flowchart LR
     Client["Monitoring API client"] --> APIGateway["API Gateway"] --> Query["Query Lambda"] --> EventsTable
 ```
 
-The Coffee Store runs in EKS. An internet-facing Application Load Balancer routes browser requests to the frontend; Nginx routes API calls to the microservices. Terraform provisions one private PostgreSQL RDS instance with separate schemas and IAM database users for Orders, Inventory, and Notifications. Local development remains SQLite-only. Request-serving workloads use CPU-based HPA for replica counts and bounded memory VPA policies for per-Pod sizing; the singleton outbox relay remains one replica. Karpenter adds and consolidates on-demand nodes when Pods cannot fit, within explicit node, CPU, and memory ceilings. A small managed node group remains as stable capacity for cluster add-ons and the Karpenter controller.
+The reference architecture runs the Coffee Store in EKS. An internet-facing Application Load Balancer routes browser requests to the frontend; Nginx routes API calls to the microservices. Terraform provisions one private PostgreSQL RDS instance with separate schemas and IAM database users for Orders, Inventory, and Notifications. Local development remains SQLite-only. Request-serving workloads use CPU-based HPA for replica counts and bounded memory VPA policies for per-Pod sizing; the singleton outbox relay remains one replica. Karpenter adds and consolidates on-demand nodes when Pods cannot fit, within explicit node, CPU, and memory ceilings. A small managed node group remains as stable capacity for cluster add-ons and the Karpenter controller.
 
 Order notifications use the existing retail EventBridge bus and SQS notification queue:
 
@@ -61,7 +61,7 @@ SQS, SNS, S3, DynamoDB, API Gateway, and CloudWatch are managed AWS services sup
 
 ## Terraform-managed platform
 
-Terraform defines the VPC, EKS, ECR, RDS PostgreSQL, messaging, and monitoring resources. The Week 3 AWS resources were cleaned up, and the Week 4 development platform has since been deployed from this repository. The Terraform workflow uses an S3 remote-state bucket; a fresh deployment must bootstrap that bucket and configure GitHub OIDC variables and permissions before applying.
+Terraform defines the VPC, EKS, ECR, RDS PostgreSQL, messaging, and monitoring resources. The Week 3 AWS resources were cleaned up, and the Week 4 development platform was later deployed from this repository. The AWS project resources were destroyed on October 20, 2026; this repository preserves the Terraform and deployment code for a future rebuild. The Terraform workflow uses an S3 remote-state bucket, which remains in place to retain Terraform state. A fresh deployment must configure GitHub OIDC variables and permissions before applying.
 
 ## Repository layout
 
@@ -75,11 +75,25 @@ helm/                               Values for AWS Load Balancer Controller, Ope
 lambda/               Event processor and query API Lambda code
 docs/                 Architecture, runbook, migration/cost plan, and demo evidence
 .github/workflows/    Terraform, platform deployment, and security workflows
+infracost.yml         Infracost configuration
+.trivyignore.yaml     Documented, expiring Trivy exceptions
 ```
 
 The dev root calls the component modules from `main.tf`. The database, budget, and CloudWatch resources are defined in their own modules. No Terraform state migration is required for these resources because they were not applied before the refactor.
 
 ## GitHub Actions workflows
+
+### Account-specific values before deployment
+
+The deployment files use placeholders for account-specific settings. Before running the deployment workflows, replace them with values from the target AWS account:
+
+| File | Values to supply |
+|---|---|
+| `helm/aws-load-balancer-controller/values-dev.yaml` | Set `clusterName` and `region` to match the `EKS_CLUSTER_NAME` and `AWS_REGION` GitHub Actions variables. Replace `<AWS_ACCOUNT_ID>` in the IAM role ARN with the account ID; the role is created by the Terraform EKS module. |
+| `k8s/opencost/opencost-ingress.yaml` | Replace the ACM certificate ARN placeholders with the ARN of an issued certificate in the ALB's Region, and set `<OPENCOST_HOSTNAME>` to the DNS name used for OpenCost. |
+| `.github/workflows/deploy-opencost.yml` | Set the OAuth2 Proxy redirect URL to `https://<OPENCOST_HOSTNAME>/oauth2/callback`, matching the Ingress hostname, and replace the `oguduf` GitHub username with the authorized account. Configure `OPEN_COST_CLIENT_ID`, `OPEN_COST_CLIENT_SECRET`, and `OPEN_COST_COOKIE_SECRET` as GitHub Actions secrets. |
+
+The OpenCost hostname must resolve to the Ingress ALB through a Route 53 alias or equivalent DNS record. Never put OAuth client credentials or cookie secrets in repository files.
 
 | Workflow file | Purpose |
 |---|---|
@@ -93,13 +107,12 @@ The dev root calls the component modules from `main.tf`. The database, budget, a
 | `.github/workflows/deploy-load-balancer-controller.yml` | Manually installs or upgrades the AWS Load Balancer Controller with Helm, using `helm/aws-load-balancer-controller/values-dev.yaml`, then verifies its rollout. |
 | `.github/workflows/deploy-karpenter.yml` | Installs the pinned Karpenter controller and applies the bounded dev NodePool after Terraform has been applied. |
 | `.github/workflows/deploy-prometheus-grafana.yml` | Manually installs or updates the pinned Prometheus/Grafana stack; Grafana can remain private or use optional HTTPS ingress. |
-| `.github/workflows/deploy-opencost.yml` | Manually installs or updates OpenCost and verifies its connection to Prometheus. |
-| `.github/workflows/deploy-opencost-router.yml` | Applies and verifies the internal OpenCost router for dashboard and API traffic. |
-| `.github/workflows/deploy-oauth2-proxy.yml` | Manually deploys OAuth2 Proxy with credentials stored in GitHub Actions secrets to protect OpenCost access. |
-| `.github/workflows/deploy-opencost-ingress.yml` | Applies and verifies the HTTPS ALB ingress for the authenticated OpenCost endpoint. |
+| `.github/workflows/deploy-opencost.yml` | Manually deploys OpenCost, then the internal router, OAuth2 Proxy, and authenticated HTTPS Ingress in dependency order. Requires the three `OPEN_COST_*` GitHub Actions secrets. |
 | `.github/workflows/diagnose-opencost-assets.yml` | Checks OpenCost, Prometheus asset metrics, cluster services, and relevant logs/configuration without deploying changes. |
 
 ## Delivery flow
+
+The steps below describe the intended deployment sequence when the AWS platform is provisioned; the project environment is currently destroyed.
 
 1. GitHub Actions authenticates to AWS using OIDC.
 2. Terraform plans infrastructure changes against the existing S3 remote state.

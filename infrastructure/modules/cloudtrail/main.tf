@@ -15,7 +15,7 @@ resource "aws_s3_bucket" "cloudtrail_logs" {
   #checkov:skip=CKV_AWS_19:KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.cloudtrail_logs below; Checkov 2.0.930 does not correlate the separate resource.
   #checkov:skip=CKV_AWS_145:Customer-managed KMS encryption is enabled by aws_s3_bucket_server_side_encryption_configuration.cloudtrail_logs below; Checkov 2.0.930 does not correlate the separate resource.
   bucket        = local.bucket_name
-  force_destroy = false
+  force_destroy = true
 
   tags = {
     Name      = local.bucket_name
