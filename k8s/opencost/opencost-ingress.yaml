@@ -8,14 +8,14 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:866934333672:certificate/e5417c45-9e24-4c51-a6f2-5c7d8c8dae14
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:<AWS_REGION>:<AWS_ACCOUNT_ID>:certificate/<ACM_CERTIFICATE_ID>"
     alb.ingress.kubernetes.io/healthcheck-path: /ping
     alb.ingress.kubernetes.io/healthcheck-port: traffic-port
     alb.ingress.kubernetes.io/success-codes: '200'
 spec:
   ingressClassName: alb
   rules:
-    - host: opencost.omergroup.click
+    - host: <OPENCOST_HOSTNAME>
       http:
         paths:
           - path: /

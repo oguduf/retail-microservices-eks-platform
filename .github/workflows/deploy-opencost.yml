@@ -1,5 +1,4 @@
-
-name: Deploy OpenCost to EKS
+name: Deploy OpenCost stack
 
 on:
   workflow_dispatch:
@@ -13,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: opencost-stack-dev
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
@@ -21,21 +24,50 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Configure AWS credentials
+      - name: Validate OAuth credentials
+        shell: bash
+        env:
+          CLIENT_ID: ${{ secrets.OPEN_COST_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.OPEN_COST_CLIENT_SECRET }}
+          COOKIE_SECRET: ${{ secrets.OPEN_COST_COOKIE_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CLIENT_ID" ]]; then
+            echo "::error::Missing OPEN_COST_CLIENT_ID"
+            exit 1
+          fi
+          if [[ -z "$CLIENT_SECRET" ]]; then
+            echo "::error::Missing OPEN_COST_CLIENT_SECRET"
+            exit 1
+          fi
+          if [[ -z "$COOKIE_SECRET" ]]; then
+            echo "::error::Missing OPEN_COST_COOKIE_SECRET"
+            exit 1
+          fi
+          if [[ ! "$COOKIE_SECRET" =~ ^[0-9a-f]{32}$ ]]; then
+            echo "::error::OPEN_COST_COOKIE_SECRET must be 32 lowercase hexadecimal characters."
+            exit 1
+          fi
+
+          echo "OAuth credentials validated."
+
+      - name: Configure AWS credentials through OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          role-session-name: GudufOpenCost
+          role-session-name: GudufOpenCostStack
 
       - name: Set up Helm
         uses: azure/setup-helm@v5.0.1
@@ -46,18 +78,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           aws eks update-kubeconfig \
             --name "$EKS_CLUSTER_NAME" \
             --region "$AWS_REGION"
 
-      - name: Check Prometheus
+      - name: Discover Prometheus service
         id: prometheus
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "===== ALL KUBERNETES SERVICES ====="
+          echo "===== KUBERNETES SERVICES ====="
           kubectl get svc -A
 
           mapfile -t matches < <(
@@ -68,25 +99,11 @@ jobs:
                   .metadata.name == "prometheus-server"
                   or (.metadata.name | endswith("-prometheus"))
                 )
-              | select(
-                  any(
-                    .spec.ports[]?;
-                    .port == 80 or .port == 9090
-                  )
-                )
+              | select(any(.spec.ports[]?; .port == 80 or .port == 9090))
               | [
                   .metadata.namespace,
                   .metadata.name,
-                  (
-                    .spec.ports |
-                    map(
-                      select(
-                        .port == 80 or .port == 9090
-                      )
-                    ) |
-                    first |
-                    .port
-                  )
+                  (.spec.ports | map(select(.port == 80 or .port == 9090)) | first | .port)
                 ]
               | @tsv
             '
@@ -97,64 +114,13 @@ jobs:
             exit 1
           fi
 
-          IFS=$'\t' read -r ns svc port <<< "${matches[0]}"
-
-          echo "namespace=$ns" >> "$GITHUB_OUTPUT"
-          echo "service=$svc" >> "$GITHUB_OUTPUT"
+          IFS=$'\t' read -r namespace service port <<< "${matches[0]}"
+          echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
+          echo "service=$service" >> "$GITHUB_OUTPUT"
           echo "port=$port" >> "$GITHUB_OUTPUT"
-
-          echo "Prometheus namespace: $ns"
-          echo "Prometheus service: $svc"
-          echo "Prometheus port: $port"
+          echo "Using Prometheus service $namespace/$service:$port"
 
       - name: Install OpenCost
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          helm repo add opencost \
-            https://opencost.github.io/opencost-helm-chart
-
-          helm repo update
-
-          helm upgrade --install opencost opencost/opencost \
-            --namespace opencost \
-            --create-namespace \
-            --values helm/opencost-values-dev.yaml \
-            --wait \
-            --timeout 5m \
-            --set opencost.ui.enabled=true \
-            --set-string opencost.prometheus.internal.namespaceName="${{ steps.prometheus.outputs.namespace }}" \
-            --set-string opencost.prometheus.internal.serviceName="${{ steps.prometheus.outputs.service }}" \
-            --set opencost.prometheus.internal.port="${{ steps.prometheus.outputs.port }}"
-
-      - name: Restart OpenCost to reload Prometheus metadata
-        if: ${{ inputs.restart_opencost }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          kubectl rollout restart deployment/opencost -n opencost
-          kubectl rollout status deployment/opencost -n opencost --timeout=5m
-
-      - name: Verify OpenCost
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "===== OPEN COST PODS ====="
-          kubectl get pods -n opencost
-
-          echo "===== OPEN COST SERVICES ====="
-          kubectl get svc -n opencost
-
-          echo "===== OPEN COST ROLLOUT ====="
-          kubectl rollout status \
-            deployment/opencost \
-            -n opencost \
-            --timeout=5m
-
-      - name: Diagnose OpenCost and Prometheus
         shell: bash
         env:
           PROM_NAMESPACE: ${{ steps.prometheus.outputs.namespace }}
@@ -162,91 +128,168 @@ jobs:
           PROM_PORT: ${{ steps.prometheus.outputs.port }}
         run: |
           set -euo pipefail
+          helm repo add opencost https://opencost.github.io/opencost-helm-chart
+          helm repo update
+          helm upgrade --install opencost opencost/opencost \
+            --namespace opencost \
+            --create-namespace \
+            --values helm/opencost-values-dev.yaml \
+            --wait \
+            --timeout 5m \
+            --set opencost.ui.enabled=true \
+            --set-string opencost.prometheus.internal.namespaceName="$PROM_NAMESPACE" \
+            --set-string opencost.prometheus.internal.serviceName="$PROM_SERVICE" \
+            --set-string opencost.prometheus.internal.port="$PROM_PORT"
+          kubectl rollout status deployment/opencost -n opencost --timeout=5m
 
-          echo "===== PROMETHEUS CONFIGURATION ====="
+      - name: Restart OpenCost to reload Prometheus metadata
+        if: ${{ inputs.restart_opencost }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl rollout restart deployment/opencost -n opencost
+          kubectl rollout status deployment/opencost -n opencost --timeout=5m
 
-          kubectl get deployment opencost \
-            -n opencost \
-            -o json | jq -r '
-              .spec.template.spec.containers[]
-              | .name as $container
-              | .env[]?
-              | select(
-                  .name |
-                  test("PROMETHEUS|CLUSTER_ID")
-                )
-              | "\($container): \(.name)=\(.value // "valueFrom")"
-            '
-
-          echo "===== OPEN COST SERVICES ====="
-          kubectl get svc -n opencost
-
-          echo "===== OPEN COST API HEALTH ====="
-
+      - name: Verify OpenCost and Prometheus connectivity
+        shell: bash
+        env:
+          PROM_NAMESPACE: ${{ steps.prometheus.outputs.namespace }}
+          PROM_SERVICE: ${{ steps.prometheus.outputs.service }}
+          PROM_PORT: ${{ steps.prometheus.outputs.port }}
+        run: |
+          set -euo pipefail
+          kubectl get pods,svc -n opencost
           kubectl run opencost-api-check \
-            -n opencost \
-            --image=curlimages/curl:8.12.1 \
-            --restart=Never \
-            --rm -i \
-            --pod-running-timeout=90s \
-            --command -- \
-            curl -sS -i --max-time 20 \
-            http://opencost.opencost.svc.cluster.local:9003/healthz
-
-          echo "===== OPEN COST ALLOCATION API ====="
-
+            -n opencost --image=curlimages/curl:8.12.1 --restart=Never --rm -i \
+            --pod-running-timeout=90s --command -- \
+            curl -fsS --max-time 20 http://opencost.opencost.svc.cluster.local:9003/healthz
           kubectl run opencost-allocation-check \
-            -n opencost \
-            --image=curlimages/curl:8.12.1 \
-            --restart=Never \
-            --rm -i \
-            --pod-running-timeout=90s \
-            --command -- \
-            curl -sS --max-time 30 \
+            -n opencost --image=curlimages/curl:8.12.1 --restart=Never --rm -i \
+            --pod-running-timeout=90s --command -- \
+            curl -fsS --max-time 30 --output /dev/null \
             "http://opencost.opencost.svc.cluster.local:9003/allocation/compute?window=1h"
-
-          echo "===== PROMETHEUS API HEALTH ====="
-
+          echo "OpenCost allocation API check passed."
           kubectl run opencost-prometheus-check \
-            -n opencost \
-            --image=curlimages/curl:8.12.1 \
-            --restart=Never \
-            --rm -i \
+            -n opencost --image=curlimages/curl:8.12.1 --restart=Never --rm -i \
             --pod-running-timeout=90s \
             --env="PROM_NAMESPACE=$PROM_NAMESPACE" \
             --env="PROM_SERVICE=$PROM_SERVICE" \
             --env="PROM_PORT=$PROM_PORT" \
-            --command -- \
-            sh -c '
-              curl -sS --max-time 20 \
+            --command -- sh -c '
+              curl -fsS --max-time 20 \
                 "http://${PROM_SERVICE}.${PROM_NAMESPACE}.svc.cluster.local:${PROM_PORT}/api/v1/query?query=up"
             '
 
-          echo "===== OPEN COST LOGS ====="
+      - name: Validate and deploy OpenCost router
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply --dry-run=server -f k8s/opencost/opencost-router.yaml
+          kubectl apply -f k8s/opencost/opencost-router.yaml
+          kubectl rollout status deployment/opencost-router -n opencost --timeout=180s
+          kubectl get deployment,svc opencost-router -n opencost
+          kubectl get pods -n opencost -l app=opencost-router
 
-          kubectl logs deployment/opencost \
-            -n opencost \
-            -c opencost \
-            --tail=80
+      - name: Create OAuth2 Proxy Kubernetes Secret
+        shell: bash
+        env:
+          CLIENT_ID: ${{ secrets.OPEN_COST_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.OPEN_COST_CLIENT_SECRET }}
+          COOKIE_SECRET: ${{ secrets.OPEN_COST_COOKIE_SECRET }}
+        run: |
+          set -euo pipefail
+          kubectl create secret generic oauth2-proxy-secrets \
+            --namespace opencost \
+            --from-literal=client-id="$CLIENT_ID" \
+            --from-literal=client-secret="$CLIENT_SECRET" \
+            --from-literal=cookie-secret="$COOKIE_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Show diagnostics if workflow fails
+      - name: Deploy and verify OAuth2 Proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
+          helm repo update
+          helm upgrade --install oauth2-proxy oauth2-proxy/oauth2-proxy \
+            --namespace opencost \
+            --set config.existingSecret=oauth2-proxy-secrets \
+            --set extraArgs.provider=github \
+            --set extraArgs.reverse-proxy=true \
+            --set extraArgs.email-domain="*" \
+            --set extraArgs.github-user=oguduf \
+            --set-string extraArgs.upstream="http://opencost-router.opencost.svc.cluster.local:8080" \
+            --set-string extraArgs.redirect-url="https://<OPENCOST_HOSTNAME>/oauth2/callback" \
+            --set extraArgs.cookie-secure=true \
+            --set extraArgs.cookie-httponly=true \
+            --set extraArgs.cookie-samesite=lax \
+            --set service.type=ClusterIP \
+            --timeout 5m
+          kubectl rollout restart deployment/oauth2-proxy -n opencost
+          kubectl rollout status deployment/oauth2-proxy -n opencost --timeout=5m
+          kubectl get pods,svc -n opencost
+
+      - name: Show OAuth2 Proxy arguments
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl get deployment oauth2-proxy -n opencost \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="oauth2-proxy")].args}'
+
+      - name: Verify OAuth2 Proxy service before exposing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl get deployment oauth2-proxy -n opencost
+          kubectl get service oauth2-proxy -n opencost
+          kubectl get endpointslice -n opencost \
+            -l kubernetes.io/service-name=oauth2-proxy \
+            -o json | jq -e '[.items[].endpoints[]? | select(.conditions.ready != false) | select((.addresses // []) | length > 0)] | length > 0' >/dev/null
+
+      - name: Deploy and verify HTTPS Ingress
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f k8s/opencost/opencost-ingress.yaml
+          kubectl get ingress opencost-auth-ingress -n opencost
+          kubectl describe ingress opencost-auth-ingress -n opencost
+
+          echo "Waiting for ALB hostname..."
+          for attempt in $(seq 1 30); do
+            alb_dns="$(kubectl get ingress opencost-auth-ingress \
+              -n opencost \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+            if [[ -n "$alb_dns" ]]; then
+              echo "ALB DNS: $alb_dns"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "::error::ALB hostname was not assigned."
+          kubectl describe ingress opencost-auth-ingress -n opencost
+          exit 1
+
+      - name: Show diagnostics if the OpenCost stack deployment fails
         if: failure()
         shell: bash
         run: |
-          echo "===== OPEN COST PODS ====="
-          kubectl get pods -n opencost -o wide || true
-
-          echo "===== OPEN COST DEPLOYMENT ====="
-          kubectl describe deployment opencost \
-            -n opencost || true
-
+          echo "===== OPEN COST HELM STATUS ====="
+          helm status opencost -n opencost || true
+          helm status oauth2-proxy -n opencost || true
+          echo "===== OPEN COST RESOURCES ====="
+          kubectl get all,ingress,endpointslice -n opencost -o wide || true
+          echo "===== OPEN COST PROMETHEUS CONFIGURATION ====="
+          kubectl get deployment opencost -n opencost -o json 2>/dev/null | jq -r '
+            .spec.template.spec.containers[]
+            | .name as $container
+            | .env[]?
+            | select(.name | test("PROMETHEUS|CLUSTER_ID"))
+            | "\($container): \(.name)=\(.value // "valueFrom")"
+          ' || true
           echo "===== OPEN COST LOGS ====="
-          kubectl logs deployment/opencost \
-            -n opencost \
-            -c opencost \
-            --tail=100 || true
-
-          echo "===== RECENT EVENTS ====="
-          kubectl get events \
-            -n opencost \
-            --sort-by=.lastTimestamp | tail -40 || true
+          kubectl logs deployment/opencost -n opencost -c opencost --tail=100 || true
+          kubectl logs deployment/opencost-router -n opencost --tail=100 || true
+          kubectl logs deployment/oauth2-proxy -n opencost -c oauth2-proxy --tail=100 || true
+          echo "===== RECENT OPEN COST EVENTS ====="
+          kubectl get events -n opencost --sort-by=.lastTimestamp | tail -40 || true

@@ -1,5 +1,6 @@
-clusterName: guduf-retail-eks-dev
-region: us-east-2
+# Replace these placeholders with the cluster and AWS Region configured in GitHub Actions.
+clusterName: <EKS_CLUSTER_NAME>
+region: <AWS_REGION>
 
 replicaCount: 2
 
@@ -7,4 +8,4 @@ serviceAccount:
   create: true
   name: aws-load-balancer-controller
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::866934333672:role/guduf-retail-eks-dev-load-balancer-controller-role
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<EKS_CLUSTER_NAME>-load-balancer-controller-role"
